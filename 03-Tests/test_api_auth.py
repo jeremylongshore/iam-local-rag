@@ -30,6 +30,13 @@ def test_bearer_key_accepted(monkeypatch, tmp_path):
     assert r.status_code != 401
 
 
+def test_bearer_key_tolerates_extra_whitespace(monkeypatch):
+    monkeypatch.setattr(Config, "NEXUS_API_KEY", "secret123")
+    client = TestClient(app)
+    r = client.get("/runs", headers={"Authorization": "Bearer   secret123"})
+    assert r.status_code != 401  # extra spaces must not break auth
+
+
 def test_health_open_without_key(monkeypatch):
     monkeypatch.setattr(Config, "NEXUS_API_KEY", "secret123")
     client = TestClient(app)

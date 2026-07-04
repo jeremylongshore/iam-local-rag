@@ -34,7 +34,8 @@ app = FastAPI(
 # API this mutating is a drive-by/CSRF vector). allow_credentials only when the
 # allowlist is explicit (browsers reject "*" + credentials anyway).
 _cors_origins = Config.NEXUS_CORS_ORIGINS
-_wildcard_cors = _cors_origins == ["*"]
+# Any wildcard in the list is unsafe with credentials, not just an exact ["*"].
+_wildcard_cors = "*" in _cors_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -59,8 +60,11 @@ async def require_api_key(
     if not expected:
         return  # auth disabled (local dev) — warned at startup
     presented = x_api_key
-    if not presented and authorization and authorization.lower().startswith("bearer "):
-        presented = authorization[7:]
+    if not presented and authorization:
+        # Robust to extra/tab whitespace: split on any whitespace and check scheme.
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            presented = parts[1]
     # Constant-time compare to avoid a byte-by-byte timing oracle; guard the
     # empty/None case first (compare_digest requires two strings).
     if not presented or not secrets.compare_digest(presented, expected):

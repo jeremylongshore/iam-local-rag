@@ -258,8 +258,10 @@ class RunLedger:
                 sources_json,
                 embed_provider
             ))
+            # JSON-serialize (injective): sources_json holds file paths that can
+            # contain the '|' delimiter, so a bare interpolation was ambiguous.
             payload_hash = hashlib.sha256(
-                f"{result.total_chunks}|{embed_provider}|{sources_json}".encode()
+                json.dumps([result.total_chunks, embed_provider, sources_json]).encode()
             ).hexdigest()
             self._append_chain(cursor, "index", run_id, result.workspace_id, payload_hash)
             conn.commit()
