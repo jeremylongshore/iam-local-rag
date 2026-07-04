@@ -316,8 +316,8 @@ class TestRunLedger:
         )
         ledger.record_query_run(query_response, [])
 
-        # Cleanup runs older than 0 days (all runs)
-        deleted = ledger.cleanup_old_runs(days=0)
+        # Cleanup is exception-gated on the tamper-evident ledger; opt in explicitly.
+        deleted = ledger.cleanup_old_runs(days=0, allow_delete=True)
 
         # Should have deleted at least 1 run
         assert deleted >= 1
