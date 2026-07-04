@@ -61,7 +61,7 @@ async def health_check():
         mode=Config.NEXUS_MODE.value,
         llm_provider=Config.NEXUS_LLM_PROVIDER.value,
         embed_provider=Config.NEXUS_EMBED_PROVIDER.value,
-        vector_store_ready=pipeline._vectorstore is not None,
+        vector_store_ready=pipeline.retriever.exists(),
         documents_indexed=0,  # TODO: track this
         uptime_seconds=time.time() - _start_time,
         metrics=PerformanceMetrics(
