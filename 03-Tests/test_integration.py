@@ -12,6 +12,9 @@ from nexus.core.models import QueryRequest, IndexRequest
 from nexus.core.providers.ollama_provider import OllamaLLMProvider, OllamaEmbeddingProvider
 from nexus.core.config import Config
 
+# Full end-to-end with real Ollama components — unit gate skips it.
+pytestmark = pytest.mark.integration
+
 
 class TestRAGPipelineIntegration:
     """Integration tests for RAG pipeline"""

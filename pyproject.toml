@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intent-nexus"
+version = "1.1.0"
+description = "Intent NEXUS — local-first BYOK document intelligence with verifiable citations, privacy receipts, provider portability, and policy-bounded cloud acceleration."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Jeremy Longshore", email = "jeremy@intentsolutions.io" }]
+keywords = ["rag", "local-first", "byok", "document-intelligence", "privacy", "citations"]
+
+# Runtime dependencies. Cloud provider SDKs are OPTIONAL extras so that
+# `import nexus` (and a local-only install) never pulls a cloud SDK — this
+# mirrors the lazy cloud-SDK isolation the provider layer already enforces.
+dependencies = [
+    "langchain>=0.2.0",
+    "langchain-community>=0.2.0",
+    "langchain-core>=0.2.0",
+    "pypdf>=3.16.0",
+    "chromadb>=0.4.15",
+    "ollama>=0.1.0",
+    "psutil>=5.9.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+# Cloud provider adapters (BYOK) — install only what you use.
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.25.0"]
+vertex = ["google-cloud-aiplatform>=1.38.0"]
+cloud = ["openai>=1.0.0", "anthropic>=0.25.0", "google-cloud-aiplatform>=1.38.0"]
+# Streamlit UI surface.
+ui = ["streamlit>=1.28.0"]
+# Developer / CI toolchain.
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",
+    "ruff>=0.6.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jeremylongshore/iam-local-rag"
+Repository = "https://github.com/jeremylongshore/iam-local-rag"
+
+[tool.setuptools.packages.find]
+include = ["nexus*"]
+
+# --- Ruff (lint + import sort) ---
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Legacy / archived / vendored trees are out of scope for the gate.
+extend-exclude = ["99-Archive", "02-Src", "05-Scripts", ".venv", "chroma_db*", "rag_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # line length is advisory; long strings/URLs are fine
+
+# --- Mypy (advisory in CI) ---
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = ["nexus"]
+warn_unused_ignores = false
+no_implicit_optional = true
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+testpaths = ["03-Tests"]
+addopts = "-q"
+markers = [
+    "integration: requires Ollama or a live external service (excluded from the unit gate)",
+]
+
+# --- Coverage ---
+[tool.coverage.run]
+source = ["nexus"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true

@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 from nexus.api.server import app, get_pipeline, _ledger
 from nexus.core.config import Config
 
+# Exercises the pipeline end-to-end (Ollama for LLM + embeddings) — unit gate skips it.
+pytestmark = pytest.mark.integration
+
 
 class TestNexusAPI:
     """Test suite for NEXUS REST API"""
@@ -57,7 +60,7 @@ class TestNexusAPI:
         data = response.json()
 
         assert data["service"] == "NEXUS RAG API"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == "1.1.0"
         assert "endpoints" in data
 
     def test_health_check(self, client):
