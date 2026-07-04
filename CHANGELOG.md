@@ -1,3 +1,19 @@
+# Release v1.1.1
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.0
+
+- chore: release v1.1.1 [skip ci] (8df9321)
+- Refactor NEXUS into a local-first BYOK document-intelligence platform (Phase 0 + dangerous-bug fixes) (#6) (c345075)
+- chore(beads): reconcile working state and stop tracking runtime locks (506b9bf)
+- bd init: initialize beads issue tracking (bb58789)
+- chore: update FUNDING.yml with GitHub Sponsors + Buy Me a Coffee (5fcd259)
+- Add proprietary license - All Rights Reserved (2c5fde3)
+- docs: Add v1.1.0 release report (1bfd8af)
+
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
