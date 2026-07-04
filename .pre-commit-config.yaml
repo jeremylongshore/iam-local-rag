@@ -20,3 +20,13 @@ repos:
         args: [--maxkb=1024]
       - id: check-merge-conflict
       - id: detect-private-key
+
+  # Intent Solutions audit harness — escape-scan on staged diff (in-repo).
+  - repo: local
+    hooks:
+      - id: audit-harness-escape-scan
+        name: audit-harness escape-scan (staged)
+        entry: audit-harness escape-scan --staged
+        language: system
+        pass_filenames: false
+        always_run: true
