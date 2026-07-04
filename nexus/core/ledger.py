@@ -2,6 +2,7 @@
 Run ledger for NEXUS - audit trail and run history.
 SQLite-based storage for tracking document indexing and query runs.
 """
+import hashlib
 import json
 import sqlite3
 from datetime import datetime
@@ -83,7 +84,102 @@ class RunLedger:
                 ON query_runs(workspace_id, timestamp DESC)
             """)
 
+            # Tamper-evident hash chain (pattern borrowed from ICO's audit-verify):
+            # each row's prev_hash links to the previous row's row_hash, and
+            # row_hash = sha256(content || prev_hash). Altering or removing any row
+            # breaks the chain, detectable by verify_chain(). Append-only.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_chain (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    prev_hash TEXT,
+                    row_hash TEXT NOT NULL
+                )
+            """)
+
             conn.commit()
+
+    @staticmethod
+    def _compute_row_hash(
+        timestamp: str,
+        operation: str,
+        run_id: str,
+        workspace_id: str,
+        payload_hash: str,
+        prev_hash: Optional[str],
+    ) -> str:
+        canonical = "|".join(
+            [timestamp, operation, run_id, workspace_id, payload_hash, prev_hash or "GENESIS"]
+        )
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
+    def _append_chain(
+        self, cursor, operation: str, run_id: str, workspace_id: str, payload_hash: str
+    ) -> str:
+        """Append one tamper-evident entry inside an open transaction."""
+        prev = cursor.execute(
+            "SELECT row_hash FROM audit_chain ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        prev_hash = prev[0] if prev else None
+        timestamp = datetime.now().isoformat()
+        row_hash = self._compute_row_hash(
+            timestamp, operation, run_id, workspace_id, payload_hash, prev_hash
+        )
+        cursor.execute(
+            """
+            INSERT INTO audit_chain
+                (timestamp, operation, run_id, workspace_id, payload_hash, prev_hash, row_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (timestamp, operation, run_id, workspace_id, payload_hash, prev_hash, row_hash),
+        )
+        return row_hash
+
+    def verify_chain(self) -> Dict:
+        """
+        Walk the audit chain and confirm each row_hash and prev_hash link. Honest
+        v1 limitation (as in ICO): catches in-place tampering and reordering;
+        whole-table truncation is caught only by comparing counts against the
+        run tables. Returns {ok, total, breaks:[...]}.
+        """
+        breaks: List[Dict] = []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM audit_chain ORDER BY seq ASC"
+            ).fetchall()
+
+        expected_prev: Optional[str] = None
+        for i, row in enumerate(rows):
+            recomputed = self._compute_row_hash(
+                row["timestamp"],
+                row["operation"],
+                row["run_id"],
+                row["workspace_id"],
+                row["payload_hash"],
+                row["prev_hash"],
+            )
+            if recomputed != row["row_hash"]:
+                breaks.append(
+                    {"seq": row["seq"], "index": i, "reason": "row_hash mismatch (content altered)"}
+                )
+            if row["prev_hash"] != expected_prev:
+                breaks.append(
+                    {
+                        "seq": row["seq"],
+                        "index": i,
+                        "reason": "prev_hash does not link to the previous row",
+                        "expected": expected_prev,
+                        "actual": row["prev_hash"],
+                    }
+                )
+            expected_prev = row["row_hash"]
+
+        return {"ok": len(breaks) == 0, "total": len(rows), "breaks": breaks}
 
     def record_index_run(
         self,
@@ -134,6 +230,10 @@ class RunLedger:
                 sources_json,
                 embed_provider
             ))
+            payload_hash = hashlib.sha256(
+                f"{result.total_chunks}|{embed_provider}|{sources_json}".encode()
+            ).hexdigest()
+            self._append_chain(cursor, "index", run_id, result.workspace_id, payload_hash)
             conn.commit()
 
         return run_id
@@ -179,6 +279,12 @@ class RunLedger:
                 len(response.citations),
                 hashes_json
             ))
+            payload_hash = hashlib.sha256(
+                f"{response.question}|{response.answer}|{response.provider}|{hashes_json}".encode()
+            ).hexdigest()
+            self._append_chain(
+                cursor, "query", response.run_id, response.workspace_id, payload_hash
+            )
             conn.commit()
 
         return response.run_id
@@ -334,16 +440,28 @@ class RunLedger:
                 }
             }
 
-    def cleanup_old_runs(self, days: int = 90) -> int:
+    def cleanup_old_runs(self, days: int = 90, allow_delete: bool = False) -> int:
         """
         Delete runs older than specified days.
 
+        The audit ledger is append-only by default: deleting run rows would break
+        the tamper-evident chain silently, so this is exception-gated. Pass
+        allow_delete=True to explicitly opt in (the audit_chain itself is never
+        deleted, so verify_chain() still detects the gap).
+
         Args:
             days: Delete runs older than this many days
+            allow_delete: Must be True to actually delete (fail-closed).
 
         Returns:
             Number of runs deleted
         """
+        if not allow_delete:
+            raise PermissionError(
+                "cleanup_old_runs is exception-gated on the tamper-evident ledger; "
+                "pass allow_delete=True to explicitly opt in."
+            )
+
         cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
         cutoff_iso = datetime.fromtimestamp(cutoff).isoformat()
 
