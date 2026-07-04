@@ -9,6 +9,7 @@ CitationVerifier refuses ("insufficient evidence") in code when the evidence is
 too weak — not just in the prompt.
 """
 import hashlib
+import re
 import time
 import uuid
 from datetime import datetime
@@ -35,6 +36,20 @@ from .models import (
 from .policy import PolicyEngine
 from .providers.base import EmbeddingProvider, LLMProvider
 from .router import ProviderRouter
+
+# workspace_id becomes a directory name; reject anything that could traverse out
+# of the store (path separators, "..", empty, unsafe chars).
+_WORKSPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _safe_workspace_id(workspace_id: str) -> str:
+    if not workspace_id or ".." in workspace_id or not _WORKSPACE_RE.match(workspace_id):
+        raise ValueError(
+            f"invalid workspace_id {workspace_id!r}: allowed chars are letters, "
+            f"digits, '.', '_', '-' (no path separators or '..')"
+        )
+    return workspace_id
+
 
 # Prompt with an explicit untrusted-data boundary (invariant #5) and an
 # insufficient-evidence refusal instruction (invariant #3).
@@ -65,7 +80,7 @@ class RAGPipeline:
         workspace_id: str = "default",
         retriever: Optional[Retriever] = None,
     ):
-        self.workspace_id = workspace_id
+        self.workspace_id = _safe_workspace_id(workspace_id)
 
         # Fail fast on misconfiguration (missing keys, bad chunk settings).
         Config.validate()

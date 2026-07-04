@@ -120,10 +120,13 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def get_embedding_dimension(self) -> int:
         """Best-effort embedding dimension (varies by model)."""
-        # nomic-embed-text=768, all-minilm=384, mxbai-embed-large=1024.
-        dims = {"nomic-embed-text": 768, "all-minilm": 384, "mxbai-embed-large": 1024}
-        base = self.model.split(":")[0]
-        return dims.get(base, 768)
+        # Substring match so prefixed/tagged names (e.g. library/nomic-embed-text:latest)
+        # still resolve. nomic-embed-text=768, all-minilm=384, mxbai-embed-large=1024.
+        model = self.model.lower()
+        for name, dim in (("nomic-embed-text", 768), ("all-minilm", 384), ("mxbai-embed-large", 1024)):
+            if name in model:
+                return dim
+        return 768
 
     def is_available(self) -> bool:
         """Check if the Ollama server is reachable (no embedding call)."""

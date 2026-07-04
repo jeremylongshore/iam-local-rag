@@ -89,12 +89,12 @@ class QmdRetriever(Retriever):
 
     def _load_manifest(self) -> dict:
         if os.path.exists(self._manifest_path):
-            with open(self._manifest_path) as f:
+            with open(self._manifest_path, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 
     def _save_manifest(self, manifest: dict) -> None:
-        with open(self._manifest_path, "w") as f:
+        with open(self._manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f)
 
     # --- Retriever interface ---
@@ -109,7 +109,7 @@ class QmdRetriever(Retriever):
             fname = f"{chash[:16]}.md"
             fpath = os.path.join(self._corpus, fname)
             if not os.path.exists(fpath):
-                with open(fpath, "w") as f:
+                with open(fpath, "w", encoding="utf-8") as f:
                     f.write(content)
                 written += 1
             manifest[fname] = {
@@ -157,7 +157,7 @@ class QmdRetriever(Retriever):
             if not content and fname:
                 fpath = os.path.join(self._corpus, fname)
                 if os.path.exists(fpath):
-                    with open(fpath) as f:
+                    with open(fpath, encoding="utf-8") as f:
                         content = f.read()
             if not content:
                 continue  # cannot ground this hit — drop it rather than answer from nothing
@@ -184,22 +184,26 @@ class QmdRetriever(Retriever):
         text = (stdout or "").strip()
         if not text:
             return []
-        # Find the JSON payload (array or object) even if a banner leaked in.
+        # Prefer parsing the whole payload; only if that fails (a banner leaked
+        # onto stdout) fall back to extracting a bracketed region.
+        candidates = [text]
         for opener, closer in (("[", "]"), ("{", "}")):
             start = text.find(opener)
             end = text.rfind(closer)
             if start != -1 and end != -1 and end > start:
-                try:
-                    data = json.loads(text[start : end + 1])
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(data, list):
-                    return data
-                if isinstance(data, dict):
-                    for key in ("results", "hits", "matches", "documents"):
-                        if isinstance(data.get(key), list):
-                            return data[key]
-                    return [data]
+                candidates.append(text[start : end + 1])
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                for key in ("results", "hits", "matches", "documents"):
+                    if isinstance(data.get(key), list):
+                        return data[key]
+                return [data]
         return []
 
     def exists(self) -> bool:

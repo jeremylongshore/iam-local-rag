@@ -260,6 +260,29 @@ def test_fallback_skips_erroring_preferred(monkeypatch):
     assert provider.get_privacy_profile().provider_label == "ollama"  # local emergency
 
 
+# --------------------------------------------------------------------------- #
+# (f) workspace_id path-traversal guard
+# --------------------------------------------------------------------------- #
+def test_workspace_id_rejects_path_traversal():
+    from nexus.core.rag_pipeline import _safe_workspace_id
+
+    for bad in ["../evil", "a/b", "..", "", "foo/../bar", "/abs", ".", "a\\b"]:
+        with pytest.raises(ValueError):
+            _safe_workspace_id(bad)
+    assert _safe_workspace_id("default") == "default"
+    assert _safe_workspace_id("ws-1_2.x") == "ws-1_2.x"
+
+
+def test_pipeline_rejects_traversal_workspace(tmp_config):
+    with pytest.raises(ValueError):
+        RAGPipeline(
+            llm_provider=FakeLLM(is_local=True),
+            embed_provider=FakeEmbed(is_local=True),
+            workspace_id="../escape",
+            retriever=FakeRetriever([_chunk("x")]),
+        )
+
+
 def test_fallback_skips_unavailable_preferred(monkeypatch):
     def fake_get(provider_name=None, mode=None):
         available = provider_name != "openai"  # openai reports unavailable
