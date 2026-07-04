@@ -117,6 +117,22 @@ class Config:
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     API_WORKERS: int = int(os.getenv("API_WORKERS", "4"))
 
+    # --- API security ---
+    # If NEXUS_API_KEY is set, protected endpoints require it (Bearer or X-API-Key).
+    # Unset = open (local dev); the server logs a warning so it's never silent.
+    NEXUS_API_KEY: Optional[str] = os.getenv("NEXUS_API_KEY")
+    # CORS allowlist (comma-separated). Defaults to localhost UI/API origins, NOT
+    # "*" — a wildcard with an unauthenticated API is a drive-by/CSRF vector.
+    # Set NEXUS_CORS_ORIGINS="*" to explicitly opt back into wildcard.
+    NEXUS_CORS_ORIGINS = [
+        o.strip()
+        for o in os.getenv(
+            "NEXUS_CORS_ORIGINS",
+            "http://localhost:8501,http://127.0.0.1:8501,http://localhost:8000",
+        ).split(",")
+        if o.strip()
+    ]
+
     # --- Privacy/Security Settings ---
     HYBRID_SAFE_MODE: bool = os.getenv("HYBRID_SAFE_MODE", "true").lower() == "true"
     MAX_SNIPPET_LENGTH: int = int(os.getenv("MAX_SNIPPET_LENGTH", "4000"))

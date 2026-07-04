@@ -2,9 +2,10 @@
 FastAPI server for headless NEXUS RAG operations.
 Provides REST API for querying and indexing.
 """
+import logging
 import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..core.config import Config
@@ -19,6 +20,8 @@ from ..core.models import (
 )
 from ..core.rag_pipeline import RAGPipeline
 
+logger = logging.getLogger("nexus.api")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="NEXUS RAG API",
@@ -26,14 +29,39 @@ app = FastAPI(
     version="1.1.0"
 )
 
-# CORS middleware
+# CORS — allowlist from config (NOT wildcard by default; a "*" origin with an
+# API this mutating is a drive-by/CSRF vector). allow_credentials only when the
+# allowlist is explicit (browsers reject "*" + credentials anyway).
+_cors_origins = Config.NEXUS_CORS_ORIGINS
+_wildcard_cors = _cors_origins == ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=not _wildcard_cors,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "X-API-Key", "Content-Type"],
 )
+
+if not Config.NEXUS_API_KEY:
+    logger.warning(
+        "NEXUS_API_KEY is not set — the API is UNAUTHENTICATED. Set NEXUS_API_KEY "
+        "to require a key on /query, /index, /workspaces and /runs."
+    )
+
+
+async def require_api_key(
+    authorization: str = Header(default=None),
+    x_api_key: str = Header(default=None),
+) -> None:
+    """Require the configured API key on protected endpoints (no-op if unset)."""
+    expected = Config.NEXUS_API_KEY
+    if not expected:
+        return  # auth disabled (local dev) — warned at startup
+    presented = x_api_key
+    if not presented and authorization and authorization.lower().startswith("bearer "):
+        presented = authorization[7:]
+    if presented != expected:
+        raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 # Global state
 _pipelines = {}  # workspace_id -> RAGPipeline
@@ -73,7 +101,7 @@ async def health_check():
     )
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(require_api_key)])
 async def query_knowledge_base(request: QueryRequest):
     """
     Query the knowledge base.
@@ -95,7 +123,7 @@ async def query_knowledge_base(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/index", response_model=IndexResult)
+@app.post("/index", response_model=IndexResult, dependencies=[Depends(require_api_key)])
 async def index_documents(request: IndexRequest):
     """
     Index documents into workspace.
@@ -114,7 +142,7 @@ async def index_documents(request: IndexRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/workspaces")
+@app.get("/workspaces", dependencies=[Depends(require_api_key)])
 async def list_workspaces():
     """
     List all active workspaces.
@@ -145,7 +173,7 @@ async def list_workspaces():
     }
 
 
-@app.post("/workspaces")
+@app.post("/workspaces", dependencies=[Depends(require_api_key)])
 async def create_workspace(workspace_id: str):
     """
     Create a new workspace.
@@ -173,7 +201,7 @@ async def create_workspace(workspace_id: str):
     }
 
 
-@app.get("/runs")
+@app.get("/runs", dependencies=[Depends(require_api_key)])
 async def list_runs(
     workspace_id: str = None,
     run_type: str = "all",
@@ -201,7 +229,7 @@ async def list_runs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/runs/{run_id}")
+@app.get("/runs/{run_id}", dependencies=[Depends(require_api_key)])
 async def get_run(run_id: str):
     """
     Get details for a specific run.
@@ -216,6 +244,12 @@ async def get_run(run_id: str):
     if not run:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
+
+
+@app.get("/audit/verify", dependencies=[Depends(require_api_key)])
+async def audit_verify():
+    """Verify the tamper-evident audit hash-chain. Returns {ok, total, breaks}."""
+    return _ledger.verify_chain()
 
 
 @app.get("/")
