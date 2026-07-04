@@ -2,12 +2,19 @@
 Provider router - selects LLM and Embedding providers based on configuration.
 """
 from typing import Tuple
-from .config import Config, NexusMode, LLMProvider as LLMProviderEnum, EmbeddingProvider as EmbeddingProviderEnum
-from .providers.base import LLMProvider, EmbeddingProvider
-from .providers.ollama_provider import OllamaLLMProvider, OllamaEmbeddingProvider
+
+from .config import Config, NexusMode
+from .config import EmbeddingProvider as EmbeddingProviderEnum
+from .config import LLMProvider as LLMProviderEnum
 from .providers.anthropic_provider import AnthropicLLMProvider
-from .providers.openai_provider import OpenAILLMProvider, OpenAIEmbeddingProvider
-from .providers.vertex_provider import VertexLLMProvider, VertexEmbeddingProvider
+from .providers.base import EmbeddingProvider, LLMProvider
+from .providers.ollama_provider import OllamaEmbeddingProvider, OllamaLLMProvider
+from .providers.openai_provider import (
+    OpenAICompatibleLLMProvider,
+    OpenAIEmbeddingProvider,
+    OpenAILLMProvider,
+)
+from .providers.vertex_provider import VertexEmbeddingProvider, VertexLLMProvider
 
 
 class ProviderRouter:
@@ -71,6 +78,15 @@ class ProviderRouter:
                     "Set it in .env or use NEXUS_LLM_PROVIDER=ollama for local-only."
                 )
             return VertexLLMProvider()
+
+        elif provider_name == LLMProviderEnum.OPENAI_COMPATIBLE.value:
+            if not Config.OPENAI_COMPATIBLE_BASE_URL:
+                raise ValueError(
+                    "OPENAI_COMPATIBLE_BASE_URL required for the openai_compatible provider. "
+                    "Set it in .env (e.g. https://openrouter.ai/api/v1) or use "
+                    "NEXUS_LLM_PROVIDER=ollama for local-only."
+                )
+            return OpenAICompatibleLLMProvider(is_local=Config.OPENAI_COMPATIBLE_IS_LOCAL)
 
         else:
             raise ValueError(
@@ -155,6 +171,45 @@ class ProviderRouter:
         embed = ProviderRouter.get_embedding_provider(embed_provider_name, mode)
 
         return llm, embed
+
+    @staticmethod
+    def get_llm_with_fallback(
+        preferred: str = None,
+        fallbacks: list = None,
+        mode: str = None,
+    ) -> LLMProvider:
+        """
+        Return the first *available* LLM provider, in priority order:
+        preferred -> configured fallbacks -> Ollama (local emergency).
+
+        Never silently returns an unavailable provider. Raises RuntimeError only
+        if nothing (not even the local emergency) is available. In LOCAL mode,
+        non-Ollama providers are rejected by get_llm_provider (fail-closed), so
+        the effective order collapses to Ollama.
+        """
+        mode = mode or Config.NEXUS_MODE.value
+        preferred = preferred or Config.NEXUS_LLM_PROVIDER.value
+
+        order = [preferred]
+        for f in (fallbacks if fallbacks is not None else Config.LLM_FALLBACK_PROVIDERS):
+            if f and f not in order:
+                order.append(f)
+        if LLMProviderEnum.OLLAMA.value not in order:
+            order.append(LLMProviderEnum.OLLAMA.value)
+
+        errors = []
+        for name in order:
+            try:
+                provider = ProviderRouter.get_llm_provider(provider_name=name, mode=mode)
+                if provider.is_available():
+                    return provider
+                errors.append(f"{name}: not available")
+            except Exception as e:
+                errors.append(f"{name}: {e}")
+
+        raise RuntimeError(
+            f"No LLM provider available. Tried {order}. Details: {'; '.join(errors)}"
+        )
 
     @staticmethod
     def validate_configuration() -> dict:
