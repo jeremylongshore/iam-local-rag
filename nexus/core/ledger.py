@@ -112,8 +112,14 @@ class RunLedger:
         payload_hash: str,
         prev_hash: Optional[str],
     ) -> str:
-        canonical = "|".join(
-            [timestamp, operation, run_id, workspace_id, payload_hash, prev_hash or "GENESIS"]
+        # JSON-serialize a fixed-order list so the field->string map is INJECTIVE:
+        # a delimiter (or path segment) inside run_id/workspace_id can no longer
+        # shift a field boundary to forge an identical hash under different
+        # attribution. (A bare "|".join was ambiguous.)
+        canonical = json.dumps(
+            [timestamp, operation, run_id, workspace_id, payload_hash, prev_hash],
+            ensure_ascii=True,
+            separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -141,10 +147,19 @@ class RunLedger:
 
     def verify_chain(self) -> Dict:
         """
-        Walk the audit chain and confirm each row_hash and prev_hash link. Honest
-        v1 limitation (as in ICO): catches in-place tampering and reordering;
-        whole-table truncation is caught only by comparing counts against the
-        run tables. Returns {ok, total, breaks:[...]}.
+        Walk the audit chain and confirm each row_hash and prev_hash link, and
+        cross-check the chain length against the recorded runs.
+
+        Detected: in-place content edits (row_hash mismatch), broken/forged links
+        (prev_hash), and rows added to or removed from the run tables without a
+        matching chain entry (count mismatch).
+
+        NOT detected (honest v1): a coordinated tail-truncation that removes the
+        last N entries from BOTH audit_chain and the run tables together leaves an
+        internally-consistent, count-matched chain. Catching that requires an
+        external head anchor or a secret-keyed (HMAC) chain — a roadmap item.
+
+        Returns {ok, total, breaks:[...]}.
         """
         breaks: List[Dict] = []
         with sqlite3.connect(self.db_path) as conn:
@@ -152,6 +167,19 @@ class RunLedger:
             rows = conn.execute(
                 "SELECT * FROM audit_chain ORDER BY seq ASC"
             ).fetchall()
+            run_count = conn.execute(
+                "SELECT (SELECT COUNT(*) FROM index_runs) + (SELECT COUNT(*) FROM query_runs)"
+            ).fetchone()[0]
+
+        if run_count != len(rows):
+            breaks.append(
+                {
+                    "reason": (
+                        f"audit_chain has {len(rows)} entries but the run tables have "
+                        f"{run_count} rows — runs were added or removed outside the chain"
+                    ),
+                }
+            )
 
         expected_prev: Optional[str] = None
         for i, row in enumerate(rows):
@@ -279,8 +307,12 @@ class RunLedger:
                 len(response.citations),
                 hashes_json
             ))
+            # Bind the values as PERSISTED (truncated), so payload_hash is
+            # reproducible from the stored row during verification.
             payload_hash = hashlib.sha256(
-                f"{response.question}|{response.answer}|{response.provider}|{hashes_json}".encode()
+                json.dumps(
+                    [response.question[:500], response.answer[:2000], response.provider, hashes_json]
+                ).encode()
             ).hexdigest()
             self._append_chain(
                 cursor, "query", response.run_id, response.workspace_id, payload_hash

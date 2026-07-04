@@ -42,3 +42,10 @@ def test_auth_noop_when_key_unset(monkeypatch):
     client = TestClient(app)
     r = client.get("/runs")  # no key needed in local-dev default
     assert r.status_code != 401
+
+
+def test_create_workspace_rejects_path_traversal(monkeypatch):
+    monkeypatch.setattr(Config, "NEXUS_API_KEY", None)  # auth off → reach the handler
+    client = TestClient(app)
+    r = client.post("/workspaces", params={"workspace_id": "../../etc"})
+    assert r.status_code == 400  # rejected before any makedirs

@@ -3,6 +3,7 @@ FastAPI server for headless NEXUS RAG operations.
 Provides REST API for querying and indexing.
 """
 import logging
+import secrets
 import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -60,7 +61,9 @@ async def require_api_key(
     presented = x_api_key
     if not presented and authorization and authorization.lower().startswith("bearer "):
         presented = authorization[7:]
-    if presented != expected:
+    # Constant-time compare to avoid a byte-by-byte timing oracle; guard the
+    # empty/None case first (compare_digest requires two strings).
+    if not presented or not secrets.compare_digest(presented, expected):
         raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 # Global state
@@ -186,6 +189,15 @@ async def create_workspace(workspace_id: str):
     """
     if not workspace_id or workspace_id == "":
         raise HTTPException(status_code=400, detail="workspace_id is required")
+
+    # Validate the slug BEFORE it is ever used as a path component (defense in
+    # depth; the pipeline also validates, but reject early with a clean 400).
+    from ..core.rag_pipeline import _safe_workspace_id
+
+    try:
+        _safe_workspace_id(workspace_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Initialize pipeline for workspace and persist its directory so the
     # workspace is listable before any documents are indexed.

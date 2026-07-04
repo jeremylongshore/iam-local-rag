@@ -75,6 +75,28 @@ def test_chain_detects_reorder_or_link_break(tmp_path):
     assert v["ok"] is False
 
 
+def test_row_hash_is_injective_across_field_boundaries():
+    # A '|' inside a field must not let a boundary shift forge an identical hash.
+    h1 = RunLedger._compute_row_hash("t", "query", "r", "x|w", "p", None)
+    h2 = RunLedger._compute_row_hash("t", "query", "r|x", "w", "p", None)
+    assert h1 != h2
+
+
+def test_verify_detects_run_removed_outside_chain(tmp_path):
+    led = RunLedger(str(tmp_path / "l.db"))
+    led.record_query_run(_query_response(run_id="r1"))
+    led.record_query_run(_query_response(run_id="r2"))
+
+    # Delete a run row but leave its audit_chain entry — count mismatch.
+    with sqlite3.connect(led.db_path) as c:
+        c.execute("DELETE FROM query_runs WHERE run_id='r1'")
+        c.commit()
+
+    v = led.verify_chain()
+    assert v["ok"] is False
+    assert any("outside the chain" in b["reason"] for b in v["breaks"])
+
+
 def test_cleanup_is_delete_gated(tmp_path):
     led = RunLedger(str(tmp_path / "l.db"))
     led.record_index_run(_index_result(), "ollama")
