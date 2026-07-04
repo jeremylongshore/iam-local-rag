@@ -1,3 +1,14 @@
+# Release v1.1.3
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.2
+
+- chore: release v1.1.3 [skip ci] (af03dea)
+- P4a: trust moat — tamper-evident hash-chained ledger + API auth + CORS lockdown (#8) (04be93e)
+
+---
+
 # Release v1.1.2
 
 **Release Date**: 2026-07-04
