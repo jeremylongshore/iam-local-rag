@@ -37,7 +37,10 @@ class TestNexusAPI:
 
     @pytest.fixture
     def client(self, temp_dirs):
-        """Create test client with temp config"""
+        """Create test client with temp config + isolated server state."""
+        import nexus.api.server as server
+        from nexus.core.ledger import RunLedger
+
         # Patch config
         original_chroma = Config.CHROMA_DB_PATH
         original_ledger = Config.LEDGER_DB_PATH
@@ -45,9 +48,16 @@ class TestNexusAPI:
         Config.CHROMA_DB_PATH = temp_dirs["chroma_dir"]
         Config.LEDGER_DB_PATH = temp_dirs["ledger_path"]
 
+        # Reset the server's module-level state so each test is isolated and the
+        # ledger/pipelines use the patched temp paths (not the import-time paths).
+        server._pipelines.clear()
+        server._ledger = RunLedger(temp_dirs["ledger_path"])
+
         client = TestClient(app)
 
         yield client
+
+        server._pipelines.clear()
 
         # Restore config
         Config.CHROMA_DB_PATH = original_chroma
