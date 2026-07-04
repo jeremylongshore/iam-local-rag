@@ -2,10 +2,10 @@
 Pydantic models for NEXUS RAG pipeline.
 Defines data structures for requests, responses, and internal state.
 """
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
-from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class DocumentSource(BaseModel):
@@ -42,6 +42,26 @@ class QueryRequest(BaseModel):
     max_results: int = Field(default=3, ge=1, le=10)
 
 
+class PrivacyReceipt(BaseModel):
+    """
+    Per-query privacy receipt (acceptance invariant #4). Answers, verifiably,
+    "what left this machine?" for a single query.
+    """
+    mode: str
+    llm_provider: str
+    llm_model: Optional[str] = None
+    llm_destination: str = "local"  # "local" | "cloud"
+    embed_provider: str
+    embed_destination: str = "local"
+    chars_sent_to_cloud: int = 0
+    tokens_sent_estimate: int = 0
+    chunk_ids: List[str] = Field(default_factory=list)
+    content_hashes: List[str] = Field(default_factory=list)
+    redactions: List[Dict[str, Any]] = Field(default_factory=list)
+    secret_patterns_detected: List[str] = Field(default_factory=list)
+    policy_pass: bool = True
+
+
 class QueryResponse(BaseModel):
     """Response from a knowledge base query"""
     question: str
@@ -53,6 +73,7 @@ class QueryResponse(BaseModel):
     latency_ms: float
     run_id: str
     timestamp: datetime
+    privacy_receipt: Optional[PrivacyReceipt] = None
 
 
 class IndexRequest(BaseModel):

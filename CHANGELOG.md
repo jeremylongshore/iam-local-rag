@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SQLite Run Ledger**: Complete audit trail for all index/query operations
   - Tracks document hashes, excerpt hashes, provider usage
   - Workspace-level statistics and analytics
-  - Compliance-ready (GDPR, HIPAA, SOC 2)
+  - Audit trail designed for privacy review (not a compliance certification)
 - **Workspace REST API**: Multi-tenant isolation
   - `GET /workspaces` - List all workspaces with stats
   - `POST /workspaces` - Create new workspace
@@ -99,11 +99,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD pipeline
 
 ### Features
-- 100% local processing (no cloud dependencies)
-- Sub-second query responses
-- Supports 100K+ documents
-- GDPR/HIPAA compliant architecture
-- Air-gap capable operation
+- Local-first processing; can run fully offline in LOCAL mode
+- Optional BYOK cloud acceleration (hybrid/cloud modes)
+- Designed for privacy; supports local-only operation
 - Real-time performance metrics
 
 ---

@@ -4,8 +4,8 @@ Reads from environment variables with sensible defaults.
 """
 import os
 from enum import Enum
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 
 class NexusMode(str, Enum):
@@ -21,6 +21,7 @@ class LLMProvider(str, Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     VERTEX = "vertex"
+    OPENAI_COMPATIBLE = "openai_compatible"  # OpenRouter / Together / vLLM / LM Studio
 
 
 class EmbeddingProvider(str, Enum):
@@ -44,6 +45,14 @@ class Config:
         os.getenv("NEXUS_EMBED_PROVIDER", "ollama")
     )
 
+    # --- Fallback routing ---
+    # Comma-separated LLM provider names tried in order when the preferred
+    # provider is unavailable (e.g. "anthropic,openai"). Ollama is always the
+    # final local-emergency fallback, appended automatically by the router.
+    LLM_FALLBACK_PROVIDERS = [
+        p.strip() for p in os.getenv("NEXUS_LLM_FALLBACK", "").split(",") if p.strip()
+    ]
+
     # --- Ollama Configuration ---
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -55,6 +64,16 @@ class Config:
     # --- OpenAI Configuration ---
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    OPENAI_USE_RESPONSES_API: bool = os.getenv("OPENAI_USE_RESPONSES_API", "false").lower() == "true"
+
+    # --- OpenAI-compatible / OpenRouter Configuration ---
+    # One adapter for any OpenAI-compatible endpoint. For a self-hosted endpoint
+    # on localhost, set OPENAI_COMPATIBLE_IS_LOCAL=true so the policy gate treats
+    # it as on-host (default false = fail-closed / external).
+    OPENAI_COMPATIBLE_BASE_URL: Optional[str] = os.getenv("OPENAI_COMPATIBLE_BASE_URL")
+    OPENAI_COMPATIBLE_API_KEY: Optional[str] = os.getenv("OPENAI_COMPATIBLE_API_KEY")
+    OPENAI_COMPATIBLE_MODEL: Optional[str] = os.getenv("OPENAI_COMPATIBLE_MODEL")
+    OPENAI_COMPATIBLE_IS_LOCAL: bool = os.getenv("OPENAI_COMPATIBLE_IS_LOCAL", "false").lower() == "true"
 
     # --- Vertex AI Configuration ---
     GOOGLE_CLOUD_PROJECT: Optional[str] = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -98,6 +117,10 @@ class Config:
                 raise ValueError("OPENAI_API_KEY required when using OpenAI provider")
             if cls.NEXUS_LLM_PROVIDER == LLMProvider.VERTEX and not cls.GOOGLE_CLOUD_PROJECT:
                 raise ValueError("GOOGLE_CLOUD_PROJECT required when using Vertex provider")
+            if cls.NEXUS_LLM_PROVIDER == LLMProvider.OPENAI_COMPATIBLE and not cls.OPENAI_COMPATIBLE_BASE_URL:
+                raise ValueError(
+                    "OPENAI_COMPATIBLE_BASE_URL required when using the openai_compatible provider"
+                )
 
         # Validate chunk settings
         if cls.CHUNK_OVERLAP >= cls.CHUNK_SIZE:

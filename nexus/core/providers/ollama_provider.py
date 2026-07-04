@@ -1,11 +1,25 @@
 """
 Ollama provider implementation for local LLM and embeddings.
 """
-from typing import List, Dict, Optional
-from langchain_community.llms import Ollama
+from typing import Dict, List, Optional
+
 from langchain_community.embeddings import OllamaEmbeddings
-from .base import LLMProvider, EmbeddingProvider
+from langchain_community.llms import Ollama
+
 from ..config import Config
+from .base import EmbeddingProvider, LLMProvider
+from .profiles import ProviderCapabilities, ProviderCostProfile, ProviderPrivacyProfile
+
+
+def _ollama_reachable(base_url: str) -> bool:
+    """Light reachability probe — list local models, no generation."""
+    try:
+        from ollama import Client
+
+        Client(host=base_url).list()
+        return True
+    except Exception:
+        return False
 
 
 class OllamaLLMProvider(LLMProvider):
@@ -55,14 +69,27 @@ class OllamaLLMProvider(LLMProvider):
         return self.model
 
     def is_available(self) -> bool:
-        """Check if Ollama is available"""
-        try:
-            llm = self._get_llm()
-            # Try a simple generation to test availability
-            llm.invoke("test", max_tokens=1)
-            return True
-        except Exception:
-            return False
+        """Check if the Ollama server is reachable (no generation)."""
+        return _ollama_reachable(self.base_url)
+
+    def get_privacy_profile(self) -> ProviderPrivacyProfile:
+        return ProviderPrivacyProfile(
+            provider_label="ollama",
+            is_local=True,
+            sends_data_offhost=False,
+            data_region="on-host",
+        )
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            supports_streaming=True,
+            supports_system_prompt=True,
+            supports_embeddings=False,
+            max_context_tokens=8192,
+        )
+
+    def get_cost_profile(self) -> ProviderCostProfile:
+        return ProviderCostProfile()  # local => free
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
@@ -98,11 +125,19 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         return 4096
 
     def is_available(self) -> bool:
-        """Check if Ollama is available"""
-        try:
-            embeddings = self._get_embeddings()
-            # Try a simple embedding to test availability
-            embeddings.embed_query("test")
-            return True
-        except Exception:
-            return False
+        """Check if the Ollama server is reachable (no embedding call)."""
+        return _ollama_reachable(self.base_url)
+
+    def get_privacy_profile(self) -> ProviderPrivacyProfile:
+        return ProviderPrivacyProfile(
+            provider_label="ollama",
+            is_local=True,
+            sends_data_offhost=False,
+            data_region="on-host",
+        )
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(supports_embeddings=True, supports_system_prompt=False)
+
+    def get_cost_profile(self) -> ProviderCostProfile:
+        return ProviderCostProfile()  # local => free

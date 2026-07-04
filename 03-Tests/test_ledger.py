@@ -2,14 +2,14 @@
 Unit tests for RunLedger.
 Tests SQLite storage, run recording, and workspace stats.
 """
-import pytest
 import os
 import tempfile
 from datetime import datetime
-from pathlib import Path
+
+import pytest
 
 from nexus.core.ledger import RunLedger
-from nexus.core.models import IndexResult, QueryResponse, DocumentSource, Citation
+from nexus.core.models import Citation, DocumentSource, IndexResult, QueryResponse
 
 
 class TestRunLedger:
@@ -34,7 +34,7 @@ class TestRunLedger:
 
     def test_initialization_creates_database(self, temp_db):
         """Test database file is created on initialization"""
-        ledger = RunLedger(db_path=temp_db)
+        RunLedger(db_path=temp_db)
         assert os.path.exists(temp_db)
 
     def test_initialization_creates_tables(self, ledger, temp_db):

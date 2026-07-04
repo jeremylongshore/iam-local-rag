@@ -7,6 +7,11 @@
 
 ---
 
+> **ARCHIVED (2026-07-04).** Historical release report, moved from the retired
+> `01-Docs/`. Its compliance-readiness (GDPR/HIPAA/SOC 2) claim was never
+> accurate and is removed below. Authoritative record:
+> `000-docs/007-AA-AUDR-architecture-audit.md`.
+
 ## Executive Summary
 
 Successfully released NEXUS v1.1.0, delivering a **complete hybrid cloud RAG platform** with multi-provider support, team collaboration, and enterprise-grade safety features.
@@ -101,7 +106,7 @@ This release represents **3 months of development** (97 days since v1.0.1) with 
 - Complete run history with excerpt hashes
 - Workspace REST API (GET/POST /workspaces, GET /runs)
 - Per-workspace analytics and statistics
-- Compliance-ready audit trail (GDPR, HIPAA, SOC 2)
+- Audit trail designed for privacy review (not a compliance certification)
 
 ### Phase 4: Quality & Usability
 

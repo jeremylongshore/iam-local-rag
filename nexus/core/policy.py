@@ -1,121 +1,269 @@
 """
-Policy enforcement for hybrid safety mode.
-Ensures documents stay local; only snippets go to cloud.
+Policy enforcement for NEXUS outbound calls.
+
+``PolicyEngine`` is the single, mode-aware gate. Every outbound call (LLM *and*
+embeddings) passes through ``guard_llm`` / ``guard_embedding``. It is the one
+policy gate the acceptance invariants require: LOCAL blocks all external calls
+(fail-closed), HYBRID forces local embeddings and refuses payloads carrying
+secrets, CLOUD is explicit but still refuses to ship secrets. PII is redacted
+from snippets by ``prepare_context`` before they ever reach the gate.
+
+This replaces the old ``PolicyRedactor`` truncate-and-hash helper, which never
+redacted PII/secrets, was not mode-aware, and was bypassable.
 """
 import hashlib
-from typing import List, Tuple
-from .config import Config
+import re
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
+
+from .config import Config, NexusMode
 from .models import Citation
 
 
-class PolicyRedactor:
+@dataclass
+class Redaction:
+    """A class of PII redacted from outbound context, with a count."""
+
+    kind: str
+    count: int
+
+
+@dataclass
+class PolicyDecision:
     """
-    Enforces hybrid safety mode policies.
-    - Truncates snippets to MAX_SNIPPET_LENGTH
-    - Records content hashes (not actual content)
-    - Prevents full documents from reaching cloud providers
+    The result of inspecting one outbound call. Doubles as the raw material for
+    a privacy receipt. Note ``secret_hits`` carries pattern NAMES, never the
+    secret values themselves.
     """
+
+    allowed: bool
+    mode: str
+    kind: str  # "llm" | "embedding"
+    provider: str
+    is_local: bool
+    char_count: int
+    token_estimate: int
+    reason: str
+    model: Optional[str] = None
+    chunk_ids: List[str] = field(default_factory=list)
+    content_hashes: List[str] = field(default_factory=list)
+    redactions: List[Redaction] = field(default_factory=list)
+    secret_hits: List[str] = field(default_factory=list)
+
+    def as_receipt(self) -> dict:
+        return {
+            "policy_pass": self.allowed,
+            "mode": self.mode,
+            "kind": self.kind,
+            "provider": self.provider,
+            "model": self.model,
+            "destination": "local" if self.is_local else "cloud",
+            "chars_out": self.char_count,
+            "tokens_out_estimate": self.token_estimate,
+            "chunk_ids": self.chunk_ids,
+            "content_hashes": self.content_hashes,
+            "redactions": [{"kind": r.kind, "count": r.count} for r in self.redactions],
+            "secret_patterns_detected": self.secret_hits,
+            "reason": self.reason,
+        }
+
+
+@dataclass
+class ContextBundle:
+    """Redacted, capped, source-attributed context ready for an outbound prompt."""
+
+    safe_context: str
+    excerpt_hashes: List[str]
+    chunk_ids: List[str]
+    redactions: List[Redaction]
+
+
+class PolicyViolation(Exception):
+    """Raised when the PolicyEngine blocks an outbound call. Carries the decision."""
+
+    def __init__(self, decision: PolicyDecision):
+        self.decision = decision
+        super().__init__(decision.reason)
+
+
+class PolicyEngine:
+    """Mode-aware gate on every outbound LLM and embedding call."""
+
+    # High-confidence secret patterns. A match on any external call is a hard
+    # block in every mode — we never intend to ship a live credential.
+    _SECRET_PATTERNS = {
+        "openai_key": r"sk-[A-Za-z0-9]{20,}",
+        "openai_project_key": r"sk-proj-[A-Za-z0-9_\-]{20,}",
+        "anthropic_key": r"sk-ant-[A-Za-z0-9_\-]{20,}",
+        "aws_access_key": r"\bAKIA[0-9A-Z]{16}\b",
+        "google_api_key": r"\bAIza[0-9A-Za-z_\-]{35}\b",
+        "github_token": r"\bghp_[A-Za-z0-9]{36}\b",
+        "slack_token": r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b",
+        "private_key_block": r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----",
+    }
+
+    # Best-effort PII patterns (v1 heuristics; refined by the eval corpus in P5).
+    # These are REDACTED from snippets, not blocked.
+    _PII_PATTERNS = {
+        "email": r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}",
+        "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
+        "phone": r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
+        "credit_card": r"\b\d{13,19}\b",
+    }
 
     def __init__(
         self,
+        mode=None,
         hybrid_safe_mode: bool = None,
-        max_snippet_length: int = None
+        max_snippet_length: int = None,
     ):
+        self.mode: NexusMode = NexusMode(mode) if mode is not None else Config.NEXUS_MODE
+        self.hybrid_safe_mode = (
+            hybrid_safe_mode if hybrid_safe_mode is not None else Config.HYBRID_SAFE_MODE
+        )
+        self.max_snippet_length = (
+            max_snippet_length if max_snippet_length is not None else Config.MAX_SNIPPET_LENGTH
+        )
+        self._secret_res = {k: re.compile(v) for k, v in self._SECRET_PATTERNS.items()}
+        self._pii_res = {k: re.compile(v) for k, v in self._PII_PATTERNS.items()}
+
+    # --- helpers ---
+
+    @staticmethod
+    def _hash(text: str) -> str:
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    def scan_secrets(self, text: str) -> List[str]:
+        """Return the NAMES (not values) of secret patterns found in text."""
+        return [name for name, rx in self._secret_res.items() if rx.search(text)]
+
+    def redact_pii(self, text: str) -> Tuple[str, List[Redaction]]:
+        redactions: List[Redaction] = []
+        for name, rx in self._pii_res.items():
+            text, n = rx.subn(f"[REDACTED:{name}]", text)
+            if n:
+                redactions.append(Redaction(kind=name, count=n))
+        return text, redactions
+
+    def prepare_context(self, citations: List[Citation]) -> ContextBundle:
         """
-        Initialize policy redactor.
-
-        Args:
-            hybrid_safe_mode: Enable safety mode (defaults to Config)
-            max_snippet_length: Max chars per snippet (defaults to Config)
+        Build cloud-safe context: hash each full excerpt (pre-redaction, for
+        audit), redact PII, cap per-snippet length, add source attribution.
+        Secrets are intentionally NOT scrubbed here so the outbound guard can
+        detect and hard-block them.
         """
-        self.hybrid_safe_mode = hybrid_safe_mode if hybrid_safe_mode is not None else Config.HYBRID_SAFE_MODE
-        self.max_snippet_length = max_snippet_length if max_snippet_length is not None else Config.MAX_SNIPPET_LENGTH
+        snippets: List[str] = []
+        excerpt_hashes: List[str] = []
+        chunk_ids: List[str] = []
+        totals: dict = {}
 
-    def redact_snippets(
-        self,
-        citations: List[Citation]
-    ) -> Tuple[str, List[str]]:
-        """
-        Redact citations into safe snippets for cloud transmission.
+        for i, c in enumerate(citations):
+            excerpt = c.excerpt
+            excerpt_hashes.append(self._hash(excerpt))
+            chunk_ids.append((c.content_hash or "")[:12] or f"chunk-{i}")
 
-        Args:
-            citations: List of citations with full excerpts
+            red_excerpt, reds = self.redact_pii(excerpt)
+            for r in reds:
+                totals[r.kind] = totals.get(r.kind, 0) + r.count
 
-        Returns:
-            Tuple of (combined_context, list of excerpt_hashes)
-        """
-        safe_snippets = []
-        excerpt_hashes = []
+            if self.hybrid_safe_mode and len(red_excerpt) > self.max_snippet_length:
+                red_excerpt = red_excerpt[: self.max_snippet_length] + "..."
 
-        for citation in citations:
-            # Get excerpt
-            excerpt = citation.excerpt
-
-            # Hash the full excerpt BEFORE truncation (for audit)
-            excerpt_hash = self._hash_content(excerpt)
-            excerpt_hashes.append(excerpt_hash)
-
-            # Truncate if in safe mode
-            if self.hybrid_safe_mode:
-                if len(excerpt) > self.max_snippet_length:
-                    excerpt = excerpt[:self.max_snippet_length] + "..."
-
-            # Add source attribution
-            source_info = f"[Source: {citation.source}"
-            if citation.page:
-                source_info += f", Page {citation.page}"
+            source_info = f"[Source: {c.source}"
+            if c.page:
+                source_info += f", Page {c.page}"
             source_info += "]"
+            snippets.append(f"{source_info}\n{red_excerpt}")
 
-            safe_snippet = f"{source_info}\n{excerpt}"
-            safe_snippets.append(safe_snippet)
+        safe_context = "\n\n---\n\n".join(snippets)
+        redactions = [Redaction(kind=k, count=v) for k, v in totals.items()]
+        return ContextBundle(safe_context, excerpt_hashes, chunk_ids, redactions)
 
-        # Combine all snippets
-        combined_context = "\n\n---\n\n".join(safe_snippets)
-
-        # Final length check
-        if self.hybrid_safe_mode and len(combined_context) > self.max_snippet_length * len(citations):
-            # Emergency truncation if combined length exceeds reasonable bounds
-            max_total = self.max_snippet_length * len(citations)
-            combined_context = combined_context[:max_total] + "\n\n[Context truncated for safety]"
-
-        return combined_context, excerpt_hashes
-
-    def validate_outbound_payload(
+    def guard(
         self,
+        *,
         payload: str,
-        sentinel: str = None
-    ) -> bool:
-        """
-        Validate that outbound payload doesn't contain forbidden content.
+        provider,
+        kind: str,
+        model: Optional[str] = None,
+        chunk_ids: Optional[List[str]] = None,
+        content_hashes: Optional[List[str]] = None,
+        redactions: Optional[List[Redaction]] = None,
+    ) -> PolicyDecision:
+        """Inspect one outbound call and decide allow/block. Never sends anything."""
+        prof = provider.get_privacy_profile()
+        is_local = prof.is_local
+        label = prof.provider_label
+        secret_hits = self.scan_secrets(payload)
+        char_count = len(payload)
+        token_estimate = max(1, char_count // 4)
 
-        Args:
-            payload: Text being sent to cloud
-            sentinel: Optional sentinel string that MUST NOT appear (for testing)
+        allowed = True
+        reason = "ok"
 
-        Returns:
-            True if payload is safe, False if it contains forbidden content
-        """
-        # Check length
-        if self.hybrid_safe_mode:
-            # Allow some overhead for formatting
-            max_allowed = self.max_snippet_length * 10  # Reasonable multiplier
-            if len(payload) > max_allowed:
-                return False
+        if is_local:
+            allowed = True
+            reason = "local provider — no third-party egress"
+        elif self.mode == NexusMode.LOCAL:
+            allowed = False
+            reason = f"LOCAL mode forbids the external {kind} call to '{label}'"
+        elif self.mode == NexusMode.HYBRID:
+            if kind == "embedding":
+                allowed = False
+                reason = (
+                    f"HYBRID mode requires local embeddings; refusing external "
+                    f"embedding call to '{label}'"
+                )
+            elif secret_hits:
+                allowed = False
+                reason = (
+                    f"secret pattern(s) {secret_hits} in outbound payload; refusing "
+                    f"external {kind} call to '{label}'"
+                )
+        elif self.mode == NexusMode.CLOUD:
+            if secret_hits:
+                allowed = False
+                reason = (
+                    f"secret pattern(s) {secret_hits} detected; refusing to send "
+                    f"secrets even in CLOUD mode"
+                )
 
-        # Check for sentinel (used in tests to ensure full docs don't leak)
-        if sentinel and sentinel in payload:
-            return False
+        return PolicyDecision(
+            allowed=allowed,
+            mode=self.mode.value,
+            kind=kind,
+            provider=label,
+            is_local=is_local,
+            char_count=char_count,
+            token_estimate=token_estimate,
+            reason=reason,
+            model=model,
+            chunk_ids=chunk_ids or [],
+            content_hashes=content_hashes or [],
+            redactions=redactions or [],
+            secret_hits=secret_hits,
+        )
 
-        return True
+    def guard_llm(self, payload: str, provider, model: Optional[str] = None, **meta) -> PolicyDecision:
+        return self.guard(payload=payload, provider=provider, kind="llm", model=model, **meta)
 
-    def _hash_content(self, content: str) -> str:
-        """Generate SHA-256 hash of content"""
-        return hashlib.sha256(content.encode()).hexdigest()
+    def guard_embedding(self, texts, provider, **meta) -> PolicyDecision:
+        payload = "\n".join(texts) if isinstance(texts, (list, tuple)) else str(texts)
+        return self.guard(payload=payload, provider=provider, kind="embedding", **meta)
+
+    @staticmethod
+    def enforce(decision: PolicyDecision) -> PolicyDecision:
+        """Raise PolicyViolation if the decision blocked the call; else pass through."""
+        if not decision.allowed:
+            raise PolicyViolation(decision)
+        return decision
+
+    # --- backward-compat surface (pipeline.policy / app_nexus) ---
 
     def get_policy_summary(self) -> dict:
-        """Get current policy settings for logging"""
         return {
+            "mode": self.mode.value,
             "hybrid_safe_mode": self.hybrid_safe_mode,
             "max_snippet_length": self.max_snippet_length,
-            "policy_enforced": True
+            "policy_enforced": True,
         }

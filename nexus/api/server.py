@@ -2,14 +2,22 @@
 FastAPI server for headless NEXUS RAG operations.
 Provides REST API for querying and indexing.
 """
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import time
 
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from ..core.config import Config
-from ..core.models import QueryRequest, QueryResponse, IndexRequest, IndexResult, HealthStatus, PerformanceMetrics
-from ..core.rag_pipeline import RAGPipeline
 from ..core.ledger import RunLedger
+from ..core.models import (
+    HealthStatus,
+    IndexRequest,
+    IndexResult,
+    PerformanceMetrics,
+    QueryRequest,
+    QueryResponse,
+)
+from ..core.rag_pipeline import RAGPipeline
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -115,7 +123,6 @@ async def list_workspaces():
         List of workspace IDs with basic stats
     """
     import os
-    from pathlib import Path
 
     workspaces = []
 

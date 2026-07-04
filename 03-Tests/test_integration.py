@@ -2,15 +2,18 @@
 Integration tests for NEXUS RAG pipeline.
 Tests full end-to-end workflows with real components.
 """
-import pytest
-import tempfile
 import os
-from pathlib import Path
+import tempfile
 
-from nexus.core.rag_pipeline import RAGPipeline
-from nexus.core.models import QueryRequest, IndexRequest
-from nexus.core.providers.ollama_provider import OllamaLLMProvider, OllamaEmbeddingProvider
+import pytest
+
 from nexus.core.config import Config
+from nexus.core.models import IndexRequest, QueryRequest
+from nexus.core.providers.ollama_provider import OllamaEmbeddingProvider, OllamaLLMProvider
+from nexus.core.rag_pipeline import RAGPipeline
+
+# Full end-to-end with real Ollama components — unit gate skips it.
+pytestmark = pytest.mark.integration
 
 
 class TestRAGPipelineIntegration:
@@ -162,14 +165,14 @@ class TestRAGPipelineIntegration:
             paths=sample_documents,
             workspace_id="test_workspace"
         )
-        index_result = pipeline.index_documents(index_request)
+        pipeline.index_documents(index_request)
 
         # Query
         query_request = QueryRequest(
             question="Test question",
             workspace_id="test_workspace"
         )
-        query_response = pipeline.query(query_request)
+        pipeline.query(query_request)
 
         # Check ledger
         ledger = pipeline.ledger
