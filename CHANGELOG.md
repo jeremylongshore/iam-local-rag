@@ -1,3 +1,14 @@
+# Release v1.1.2
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.1
+
+- chore: release v1.1.2 [skip ci] (2e85926)
+- P3: modular retrieval + real qmd hybrid backend + small-model defaults (#7) (ba119cc)
+
+---
+
 # Release v1.1.1
 
 **Release Date**: 2026-07-04
