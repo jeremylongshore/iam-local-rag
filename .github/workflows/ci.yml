@@ -90,12 +90,15 @@ jobs:
             sleep 1
             ollama list && break
           done
-      - name: Pull model
-        run: ollama pull llama3
+      - name: Pull small models (fast, CI-friendly)
+        run: |
+          ollama pull qwen2.5:0.5b        # ~400MB generation model
+          ollama pull nomic-embed-text    # ~274MB embedding model
       - name: Integration + API tests (LOCAL mode)
         env:
           NEXUS_MODE: local
-          OLLAMA_MODEL: llama3
+          OLLAMA_MODEL: qwen2.5:0.5b
+          OLLAMA_EMBED_MODEL: nomic-embed-text
           DOCUMENTS_DIR: ./documents
           CHROMA_DB_PATH: ./chroma_db_ci
           LEDGER_DB_PATH: ./nexus_ledger_ci.db

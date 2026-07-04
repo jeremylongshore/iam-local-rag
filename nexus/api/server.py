@@ -61,7 +61,7 @@ async def health_check():
         mode=Config.NEXUS_MODE.value,
         llm_provider=Config.NEXUS_LLM_PROVIDER.value,
         embed_provider=Config.NEXUS_EMBED_PROVIDER.value,
-        vector_store_ready=pipeline._vectorstore is not None,
+        vector_store_ready=pipeline.retriever.exists(),
         documents_indexed=0,  # TODO: track this
         uptime_seconds=time.time() - _start_time,
         metrics=PerformanceMetrics(
@@ -159,8 +159,12 @@ async def create_workspace(workspace_id: str):
     if not workspace_id or workspace_id == "":
         raise HTTPException(status_code=400, detail="workspace_id is required")
 
-    # Initialize pipeline for workspace (creates chroma directory)
+    # Initialize pipeline for workspace and persist its directory so the
+    # workspace is listable before any documents are indexed.
     pipeline = get_pipeline(workspace_id)
+    import os
+
+    os.makedirs(pipeline.workspace_dir, exist_ok=True)
 
     return {
         "workspace_id": workspace_id,

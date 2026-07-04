@@ -245,10 +245,10 @@ class TestRAGPipelineIntegration:
         )
 
         # Workspace 2 should have no documents
-        assert pipeline2._get_vectorstore() is None
+        assert not pipeline2.retriever.exists()
 
         # Workspace 1 should have documents
-        assert pipeline1._get_vectorstore() is not None
+        assert pipeline1.retriever.exists()
 
 
 class TestHybridSafetyIntegration:

@@ -18,8 +18,10 @@ from nexus.core.config import Config, NexusMode
 from nexus.core.models import IndexRequest, QueryRequest
 from nexus.core.policy import PolicyEngine, PolicyViolation
 from nexus.core.providers.profiles import ProviderPrivacyProfile
-from nexus.core.rag_pipeline import RAGPipeline, _ABCEmbeddingAdapter
+from nexus.core.rag_pipeline import RAGPipeline
 from nexus.core.router import ProviderRouter
+from nexus.retrieval.base import IndexStats, RetrievedChunk, Retriever
+from nexus.retrieval.embedding_adapter import ABCEmbeddingAdapter
 
 SECRET_SENTINEL = "AKIAIOSFODNN7EXAMPLE"  # matches the aws_access_key pattern
 
@@ -27,28 +29,6 @@ SECRET_SENTINEL = "AKIAIOSFODNN7EXAMPLE"  # matches the aws_access_key pattern
 # --------------------------------------------------------------------------- #
 # Fakes
 # --------------------------------------------------------------------------- #
-class FakeDoc:
-    def __init__(self, content, metadata=None):
-        self.page_content = content
-        self.metadata = metadata or {}
-
-
-class FakeRetriever:
-    def __init__(self, docs):
-        self._docs = docs
-
-    def invoke(self, query):
-        return self._docs
-
-
-class FakeVectorStore:
-    def __init__(self, docs):
-        self._docs = docs
-
-    def as_retriever(self, **kwargs):
-        return FakeRetriever(self._docs)
-
-
 class FakeLLM:
     def __init__(self, is_local=False, label="anthropic", available=True):
         self.calls = 0
@@ -99,6 +79,39 @@ class FakeEmbed:
         return ProviderPrivacyProfile(provider_label=self._label, is_local=self._is_local)
 
 
+class FakeRetriever(Retriever):
+    """Returns preset chunks; reports a configurable locality for the gate."""
+
+    name = "fake"
+
+    def __init__(self, chunks, is_local=True, label="ollama"):
+        self._chunks = chunks
+        self._is_local = is_local
+        self._label = label
+
+    def index(self, documents):
+        return IndexStats(chunks_indexed=len(documents), backend=self.name)
+
+    def retrieve(self, query, k):
+        return self._chunks[:k]
+
+    def exists(self):
+        return True
+
+    def get_privacy_profile(self):
+        return ProviderPrivacyProfile(provider_label=self._label, is_local=self._is_local)
+
+
+def _chunk(text, source="a.txt", score=0.9):
+    return RetrievedChunk(
+        content=text,
+        source=source,
+        score=score,
+        chunk_id=RetrievedChunk.hash_content(text)[:12],
+        content_hash=RetrievedChunk.hash_content(text),
+    )
+
+
 @pytest.fixture
 def tmp_config(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "CHROMA_DB_PATH", str(tmp_path / "chroma"))
@@ -110,16 +123,14 @@ def tmp_config(tmp_path, monkeypatch):
 # (a) embed path no longer crashes on non-Ollama providers
 # --------------------------------------------------------------------------- #
 def test_adapter_routes_through_abc():
-    """The adapter must call the ABC methods, not the Ollama-only private one."""
     from nexus.core.providers.openai_provider import OpenAIEmbeddingProvider
 
     embed = OpenAIEmbeddingProvider(api_key="sk-fake")
-    # The old pipeline called this private method, which OpenAI never defined.
-    assert not hasattr(embed, "_get_embeddings")
+    assert not hasattr(embed, "_get_embeddings")  # the old bug relied on this
 
     embed.embed_documents = lambda texts: [[1.0, 2.0] for _ in texts]
     embed.embed_query = lambda text: [1.0, 2.0]
-    adapter = _ABCEmbeddingAdapter(embed)
+    adapter = ABCEmbeddingAdapter(embed)
     assert adapter.embed_documents(["a", "b"]) == [[1.0, 2.0], [1.0, 2.0]]
     assert adapter.embed_query("q") == [1.0, 2.0]
 
@@ -153,9 +164,9 @@ def test_local_mode_makes_zero_network_calls(tmp_config, monkeypatch):
         llm_provider=FakeLLM(is_local=True, label="ollama"),
         embed_provider=FakeEmbed(is_local=True, label="ollama"),
         workspace_id="ws_local",
+        retriever=FakeRetriever([_chunk("local content about cats")], is_local=True),
     )
     pipe.policy = PolicyEngine(mode="local")
-    pipe._vectorstore = FakeVectorStore([FakeDoc("local content about cats", {"source": "a.txt"})])
 
     resp = pipe.query(QueryRequest(question="what about cats?", workspace_id="ws_local"))
     assert resp.answer == "ANSWER"
@@ -168,9 +179,9 @@ def test_local_mode_blocks_cloud_provider(tmp_config):
         llm_provider=FakeLLM(is_local=False, label="anthropic"),
         embed_provider=FakeEmbed(is_local=True, label="ollama"),
         workspace_id="ws_local2",
+        retriever=FakeRetriever([_chunk("content")], is_local=True),
     )
     pipe.policy = PolicyEngine(mode="local")
-    pipe._vectorstore = FakeVectorStore([FakeDoc("content", {"source": "a.txt"})])
 
     with pytest.raises(PolicyViolation):
         pipe.query(QueryRequest(question="q", workspace_id="ws_local2"))
@@ -186,11 +197,9 @@ def test_secret_blocked_before_cloud_llm(tmp_config):
         llm_provider=llm,
         embed_provider=FakeEmbed(is_local=True, label="ollama"),
         workspace_id="ws_secret",
+        retriever=FakeRetriever([_chunk(f"deploy config: {SECRET_SENTINEL}", source="secrets.txt")]),
     )
     pipe.policy = PolicyEngine(mode="hybrid")
-    pipe._vectorstore = FakeVectorStore(
-        [FakeDoc(f"deploy config: {SECRET_SENTINEL}", {"source": "secrets.txt"})]
-    )
 
     with pytest.raises(PolicyViolation):
         pipe.query(QueryRequest(question="what is the config?", workspace_id="ws_secret"))
@@ -204,6 +213,7 @@ def test_secret_blocked_before_cloud_embedding(tmp_config, monkeypatch):
         llm_provider=FakeLLM(is_local=False),
         embed_provider=embed,
         workspace_id="ws_secret_embed",
+        retriever=FakeRetriever([], is_local=False, label="openai"),
     )
     pipe.policy = PolicyEngine(mode="cloud")
     doc = tmp_config / "leak.txt"
@@ -215,7 +225,29 @@ def test_secret_blocked_before_cloud_embedding(tmp_config, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# (d) provider fallback
+# (d) insufficient-evidence refusal (invariant #3)
+# --------------------------------------------------------------------------- #
+def test_refuses_when_evidence_below_floor(tmp_config, monkeypatch):
+    from nexus.retrieval.citation_verifier import INSUFFICIENT_EVIDENCE_ANSWER
+
+    llm = FakeLLM(is_local=True, label="ollama")
+    pipe = RAGPipeline(
+        llm_provider=llm,
+        embed_provider=FakeEmbed(is_local=True),
+        workspace_id="ws_refuse",
+        retriever=FakeRetriever([_chunk("weakly related", score=0.1)], is_local=True),
+    )
+    pipe.policy = PolicyEngine(mode="local")
+    pipe.verifier.min_score = 0.5  # floor above the top score
+
+    resp = pipe.query(QueryRequest(question="q", workspace_id="ws_refuse"))
+    assert resp.answer == INSUFFICIENT_EVIDENCE_ANSWER
+    assert resp.citations == []
+    assert llm.calls == 0  # no generation on refusal
+
+
+# --------------------------------------------------------------------------- #
+# (e) provider fallback
 # --------------------------------------------------------------------------- #
 def test_fallback_skips_erroring_preferred(monkeypatch):
     def fake_get(provider_name=None, mode=None):
@@ -226,6 +258,29 @@ def test_fallback_skips_erroring_preferred(monkeypatch):
     monkeypatch.setattr(ProviderRouter, "get_llm_provider", staticmethod(fake_get))
     provider = ProviderRouter.get_llm_with_fallback(preferred="anthropic", fallbacks=[], mode="hybrid")
     assert provider.get_privacy_profile().provider_label == "ollama"  # local emergency
+
+
+# --------------------------------------------------------------------------- #
+# (f) workspace_id path-traversal guard
+# --------------------------------------------------------------------------- #
+def test_workspace_id_rejects_path_traversal():
+    from nexus.core.rag_pipeline import _safe_workspace_id
+
+    for bad in ["../evil", "a/b", "..", "", "foo/../bar", "/abs", ".", "a\\b"]:
+        with pytest.raises(ValueError):
+            _safe_workspace_id(bad)
+    assert _safe_workspace_id("default") == "default"
+    assert _safe_workspace_id("ws-1_2.x") == "ws-1_2.x"
+
+
+def test_pipeline_rejects_traversal_workspace(tmp_config):
+    with pytest.raises(ValueError):
+        RAGPipeline(
+            llm_provider=FakeLLM(is_local=True),
+            embed_provider=FakeEmbed(is_local=True),
+            workspace_id="../escape",
+            retriever=FakeRetriever([_chunk("x")]),
+        )
 
 
 def test_fallback_skips_unavailable_preferred(monkeypatch):
