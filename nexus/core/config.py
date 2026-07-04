@@ -54,8 +54,23 @@ class Config:
     ]
 
     # --- Ollama Configuration ---
+    # Generation and embedding use SEPARATE models. A general LLM is a poor
+    # embedder; nomic-embed-text (~274MB) is the small RAG-appropriate default.
+    # Small local options: gen = qwen2.5:0.5b (397MB) / gemma2:2b / tinyllama;
+    # embed = nomic-embed-text (274MB) / all-minilm (45MB, tiniest).
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3")
+    OLLAMA_EMBED_MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # --- Retrieval backend ---
+    # chroma: zero-dependency dense vector store (default).
+    # qmd:    the homegrown qmd hybrid (BM25 + vector + rerank) engine, driven
+    #         via its CLI. Falls back to chroma if the qmd binary is absent.
+    NEXUS_RETRIEVER: str = os.getenv("NEXUS_RETRIEVER", "chroma")
+    QMD_BIN: str = os.getenv("QMD_BIN", "qmd")
+    # Minimum retrieval score below which the answer refuses ("insufficient
+    # evidence") instead of guessing. 0.0 disables the floor.
+    MIN_RETRIEVAL_SCORE: float = float(os.getenv("MIN_RETRIEVAL_SCORE", "0.0"))
 
     # --- Anthropic Configuration ---
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
