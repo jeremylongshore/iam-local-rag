@@ -146,3 +146,74 @@ def test_factory_qmd_missing_falls_back_to_chroma(tmp_path):
         _KeywordEmbed(), str(tmp_path / "chroma"), backend="qmd", qmd_bin="no-such-qmd-binary"
     )
     assert isinstance(r, ChromaRetriever)  # graceful fallback
+
+
+# --------------------------------------------------------------------------- #
+# QmdRetriever robustness (mocks _binary_ok + _run — no real qmd needed)
+# --------------------------------------------------------------------------- #
+import os  # noqa: E402
+import subprocess  # noqa: E402
+
+
+def _cp(returncode=0, stdout="", stderr=""):
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+@pytest.fixture
+def qmd(tmp_path, monkeypatch):
+    monkeypatch.setattr(QmdRetriever, "_binary_ok", lambda self: True)
+    return QmdRetriever(str(tmp_path), qmd_bin="qmd")
+
+
+def test_qmd_retrieve_raises_on_nonzero_exit(qmd, monkeypatch):
+    monkeypatch.setattr(qmd, "_run", lambda args, check=False: _cp(returncode=1, stderr="boom"))
+    with pytest.raises(QmdUnavailable):
+        qmd.retrieve("q", 3)
+
+
+def test_qmd_retrieve_uses_end_of_options_sentinel(qmd, monkeypatch):
+    captured = {}
+
+    def fake_run(args, check=False):
+        captured["args"] = args
+        return _cp(0, stdout="[]")
+
+    monkeypatch.setattr(qmd, "_run", fake_run)
+    qmd.retrieve("--help", 3)  # a dash-prefixed query must not be parsed as a flag
+    assert "--" in captured["args"]
+    assert captured["args"].index("--") < captured["args"].index("--help")
+
+
+def test_qmd_retrieve_backfills_content_from_corpus(qmd, monkeypatch):
+    os.makedirs(qmd._corpus, exist_ok=True)
+    fname = "abc123.md"
+    with open(os.path.join(qmd._corpus, fname), "w") as f:
+        f.write("the full chunk body")
+    qmd._save_manifest({fname: {"source": "orig.txt", "content_hash": "hh"}})
+    monkeypatch.setattr(
+        qmd, "_run", lambda args, check=False: _cp(0, stdout=f'[{{"path": "{fname}", "score": 0.8}}]')
+    )
+    hits = qmd.retrieve("q", 3)
+    assert hits and hits[0].content == "the full chunk body"
+    assert hits[0].source == "orig.txt"
+
+
+def test_qmd_retrieve_skips_ungroundable_hit(qmd, monkeypatch):
+    os.makedirs(qmd._corpus, exist_ok=True)
+    monkeypatch.setattr(
+        qmd, "_run", lambda args, check=False: _cp(0, stdout='[{"path": "missing.md", "score": 0.8}]')
+    )
+    assert qmd.retrieve("q", 3) == []  # no body + no corpus file => dropped, not answered blank
+
+
+def test_qmd_index_raises_on_embed_failure(qmd, monkeypatch):
+    from langchain_core.documents import Document
+
+    def fake_run(args, check=False):
+        if args and args[0] == "embed":
+            return _cp(returncode=1, stderr="no embed model")
+        return _cp(0)
+
+    monkeypatch.setattr(qmd, "_run", fake_run)
+    with pytest.raises(QmdUnavailable):
+        qmd.index([Document(page_content="x", metadata={"source": "a.txt"})])

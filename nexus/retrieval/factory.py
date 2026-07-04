@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
 from ..core.config import Config
@@ -26,8 +25,10 @@ def get_retriever(
         from .qmd_retriever import QmdRetriever, QmdUnavailable
 
         try:
+            # chroma_path is already the per-workspace directory; default the qmd
+            # workspace to it (NOT its shared parent, which would mix workspaces).
             return QmdRetriever(
-                workspace_dir=workspace_dir or os.path.dirname(chroma_path) or chroma_path,
+                workspace_dir=workspace_dir or chroma_path,
                 qmd_bin=qmd_bin or Config.QMD_BIN,
             )
         except QmdUnavailable as e:

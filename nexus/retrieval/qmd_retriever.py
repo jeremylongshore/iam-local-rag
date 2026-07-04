@@ -42,8 +42,18 @@ class QmdRetriever(Retriever):
 
     def _env(self) -> dict:
         env = dict(os.environ)
-        # Keep NEXUS's qmd index out of the user's global ~/.cache/qmd.
-        env["XDG_CACHE_HOME"] = self._home
+        # Isolate ALL of qmd's XDG state under the workspace: the collection
+        # registry lives under XDG_CONFIG_HOME and the index under XDG_DATA_HOME,
+        # so overriding only the cache would still register per-workspace corpora
+        # into the operator's global qmd and let queries leak across workspaces.
+        for var, sub in (
+            ("XDG_CACHE_HOME", "cache"),
+            ("XDG_CONFIG_HOME", "config"),
+            ("XDG_DATA_HOME", "data"),
+        ):
+            path = os.path.join(self._home, sub)
+            os.makedirs(path, exist_ok=True)
+            env[var] = path
         return env
 
     def _run(self, args: List[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -109,21 +119,48 @@ class QmdRetriever(Retriever):
             }
         self._save_manifest(manifest)
 
-        # Register + (re)index + embed the corpus with qmd.
-        self._run(["collection", "add", self._corpus], check=False)
-        self._run(["update"], check=False)
-        self._run(["embed"], check=False)
-        return IndexStats(chunks_indexed=written, backend=self.name, detail="qmd collection embedded")
+        # Register + (re)index + embed the corpus with qmd. A nonzero exit on
+        # update/embed means the index is empty/stale — surface it instead of
+        # returning a false success that later degrades every query to a refusal.
+        add = self._run(["collection", "add", self._corpus], check=False)
+        for step in ("update", "embed"):
+            res = self._run([step], check=False)
+            if res.returncode != 0:
+                raise QmdUnavailable(
+                    f"qmd {step} failed (exit {res.returncode}): {(res.stderr or '')[:500]}"
+                )
+        return IndexStats(
+            chunks_indexed=written,
+            backend=self.name,
+            detail=f"qmd collection embedded (add exit {add.returncode})",
+        )
 
     def retrieve(self, query: str, k: int) -> List[RetrievedChunk]:
-        result = self._run(["query", query, "--json", "-n", str(k)], check=False)
+        # `--` terminates option parsing so a query beginning with '-' is treated
+        # as the search term, not a qmd flag (argument-injection guard).
+        result = self._run(["query", "--json", "-n", str(k), "--", query], check=False)
+        if result.returncode != 0:
+            # A broken backend must NOT masquerade as a valid "insufficient
+            # evidence" refusal — propagate the failure.
+            raise QmdUnavailable(
+                f"qmd query failed (exit {result.returncode}): {(result.stderr or '')[:500]}"
+            )
         hits = self._parse_query_json(result.stdout)
         manifest = self._load_manifest()
         chunks: List[RetrievedChunk] = []
         for hit in hits[:k]:
-            content = hit.get("content") or hit.get("snippet") or hit.get("text") or ""
             path = hit.get("path") or hit.get("file") or hit.get("source") or ""
             fname = os.path.basename(path)
+            content = hit.get("content") or hit.get("snippet") or hit.get("text") or ""
+            # qmd hits often carry only a path/snippet; recover the full chunk
+            # from the corpus so the LLM never gets empty context.
+            if not content and fname:
+                fpath = os.path.join(self._corpus, fname)
+                if os.path.exists(fpath):
+                    with open(fpath) as f:
+                        content = f.read()
+            if not content:
+                continue  # cannot ground this hit — drop it rather than answer from nothing
             meta = manifest.get(fname, {})
             chash = meta.get("content_hash") or RetrievedChunk.hash_content(content)
             score = hit.get("score", hit.get("rerank_score", 0.0))
