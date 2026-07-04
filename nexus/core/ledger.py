@@ -2,11 +2,12 @@
 Run ledger for NEXUS - audit trail and run history.
 SQLite-based storage for tracking document indexing and query runs.
 """
-import sqlite3
 import json
-from typing import List, Dict, Optional
+import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Optional
+
 from .config import Config
 from .models import IndexResult, QueryResponse
 

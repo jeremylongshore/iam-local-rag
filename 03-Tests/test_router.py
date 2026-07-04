@@ -2,16 +2,26 @@
 Unit tests for ProviderRouter.
 Tests provider selection, mode constraints, and validation.
 """
-import pytest
 import os
 from unittest.mock import patch
 
-from nexus.core.router import ProviderRouter
-from nexus.core.config import NexusMode, LLMProvider as LLMProviderEnum, EmbeddingProvider as EmbeddingProviderEnum
-from nexus.core.providers.ollama_provider import OllamaLLMProvider, OllamaEmbeddingProvider
+import pytest
+
+from nexus.core.config import (
+    Config,
+    NexusMode,
+)
+from nexus.core.config import (
+    EmbeddingProvider as EmbeddingProviderEnum,
+)
+from nexus.core.config import (
+    LLMProvider as LLMProviderEnum,
+)
 from nexus.core.providers.anthropic_provider import AnthropicLLMProvider
-from nexus.core.providers.openai_provider import OpenAILLMProvider, OpenAIEmbeddingProvider
-from nexus.core.providers.vertex_provider import VertexLLMProvider, VertexEmbeddingProvider
+from nexus.core.providers.ollama_provider import OllamaEmbeddingProvider, OllamaLLMProvider
+from nexus.core.providers.openai_provider import OpenAIEmbeddingProvider, OpenAILLMProvider
+from nexus.core.providers.vertex_provider import VertexEmbeddingProvider, VertexLLMProvider
+from nexus.core.router import ProviderRouter
 
 
 class TestProviderRouter:
@@ -24,7 +34,7 @@ class TestProviderRouter:
         )
         assert isinstance(provider, OllamaLLMProvider)
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"})
+    @patch.object(Config, "ANTHROPIC_API_KEY", "sk-ant-test123")
     def test_get_llm_provider_anthropic(self):
         """Test Anthropic LLM provider selection"""
         provider = ProviderRouter.get_llm_provider(
@@ -33,7 +43,7 @@ class TestProviderRouter:
         assert isinstance(provider, AnthropicLLMProvider)
         assert provider.api_key == "sk-ant-test123"
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test123"})
+    @patch.object(Config, "OPENAI_API_KEY", "sk-test123")
     def test_get_llm_provider_openai(self):
         """Test OpenAI LLM provider selection"""
         provider = ProviderRouter.get_llm_provider(
@@ -42,7 +52,7 @@ class TestProviderRouter:
         assert isinstance(provider, OpenAILLMProvider)
         assert provider.api_key == "sk-test123"
 
-    @patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch.object(Config, "GOOGLE_CLOUD_PROJECT", "test-project")
     def test_get_llm_provider_vertex(self):
         """Test Vertex AI LLM provider selection"""
         provider = ProviderRouter.get_llm_provider(
@@ -95,7 +105,7 @@ class TestProviderRouter:
         )
         assert isinstance(provider, OllamaEmbeddingProvider)
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test123"})
+    @patch.object(Config, "OPENAI_API_KEY", "sk-test123")
     def test_get_embedding_provider_openai(self):
         """Test OpenAI embedding provider selection"""
         provider = ProviderRouter.get_embedding_provider(
@@ -104,7 +114,7 @@ class TestProviderRouter:
         assert isinstance(provider, OpenAIEmbeddingProvider)
         assert provider.api_key == "sk-test123"
 
-    @patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "test-project"})
+    @patch.object(Config, "GOOGLE_CLOUD_PROJECT", "test-project")
     def test_get_embedding_provider_vertex(self):
         """Test Vertex AI embedding provider selection"""
         provider = ProviderRouter.get_embedding_provider(
@@ -143,10 +153,8 @@ class TestProviderRouter:
         assert "llm_available" in results
         assert "embed_available" in results
 
-    @patch.dict(os.environ, {
-        "NEXUS_MODE": "HYBRID",
-        "HYBRID_SAFE_MODE": "false"
-    })
+    @patch.object(Config, "NEXUS_MODE", NexusMode.HYBRID)
+    @patch.object(Config, "HYBRID_SAFE_MODE", False)
     def test_validate_configuration_hybrid_unsafe_warning(self):
         """Test validation warns when HYBRID_SAFE_MODE is disabled"""
         results = ProviderRouter.validate_configuration()

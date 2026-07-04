@@ -2,12 +2,13 @@
 API tests for NEXUS FastAPI server.
 Tests REST endpoints using FastAPI TestClient.
 """
-import pytest
-import tempfile
 import os
+import tempfile
+
+import pytest
 from fastapi.testclient import TestClient
 
-from nexus.api.server import app, get_pipeline, _ledger
+from nexus.api.server import app
 from nexus.core.config import Config
 
 # Exercises the pipeline end-to-end (Ollama for LLM + embeddings) — unit gate skips it.
@@ -327,7 +328,7 @@ class TestNexusAPI:
             f.write("Content")
 
         # Index
-        index_response = client.post("/index", json={
+        client.post("/index", json={
             "paths": [doc_path],
             "workspace_id": "test"
         })
