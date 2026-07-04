@@ -6,6 +6,11 @@
 
 ---
 
+> **ARCHIVED (2026-07-04).** Historical point-in-time report, moved from the
+> retired `01-Docs/`. It described compliance readiness (GDPR/HIPAA/SOC 2) that
+> was never accurate — those claims are removed below. The authoritative record
+> is `000-docs/007-AA-AUDR-architecture-audit.md`.
+
 ## Executive Summary
 
 Successfully completed the NEXUS Hybrid Cloud upgrade, transforming the system from local-only (Ollama) to a full multi-provider hybrid cloud RAG platform with enterprise-grade features:
@@ -13,7 +18,7 @@ Successfully completed the NEXUS Hybrid Cloud upgrade, transforming the system f
 - **3 Cloud Providers**: Anthropic Claude, OpenAI GPT, Google Vertex AI
 - **Hybrid Safety Mode**: Documents stay local; only snippets sent to cloud
 - **Multi-Workspace**: Team collaboration with workspace isolation
-- **Audit Trail**: Complete run ledger (SQLite) for compliance
+- **Audit Trail**: Complete run ledger (SQLite) for privacy review
 - **REST API**: Headless operation with workspace management
 - **100+ Tests**: Comprehensive unit, integration, and API test coverage
 - **CI/CD**: Automated testing pipeline
@@ -99,7 +104,7 @@ Successfully completed the NEXUS Hybrid Cloud upgrade, transforming the system f
 
 **Audit Trail:**
 - Excerpt hashes enable verification that only snippets (not full docs) were sent to cloud
-- Complete compliance trail for GDPR/HIPAA
+- Complete audit trail for privacy review (not a compliance certification)
 
 ### Phase 3.2: Workspace API (local-rag-agent-0h0.6)
 **Commit:** 9697676
@@ -386,12 +391,12 @@ curl "http://localhost:8000/runs?workspace_id=team1&run_type=query&limit=10"
 4. **Payload Validation**: Outbound payloads validated before cloud transmission
 5. **Sentinel Detection**: Optional sentinel strings can be flagged
 
-### Compliance Features
+### Privacy Features (not compliance certifications)
 
-- **GDPR**: Complete data lineage and audit trail
-- **HIPAA**: Documents stay local; only de-identified snippets to cloud
-- **SOC 2**: Audit logs for all operations
-- **Air-Gap Compatible**: LOCAL mode works offline
+- **Data lineage**: complete audit trail of what left the host
+- **Local-first**: documents stay local; only redacted snippets to cloud in hybrid
+- **Audit logs**: recorded for every operation
+- **Offline capable**: LOCAL mode works offline
 
 ---
 
