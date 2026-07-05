@@ -30,9 +30,18 @@ class GroundednessVerifier:
         self.threshold = threshold
 
     def score(self, answer: str, context_texts: List[str]) -> float:
+        # A standard refusal makes no claims about the documents — trivially
+        # grounded (so the verifier is safe to use as an inline pipeline gate).
+        from ..retrieval.citation_verifier import INSUFFICIENT_EVIDENCE_ANSWER
+
+        if answer.strip() == INSUFFICIENT_EVIDENCE_ANSWER or answer.strip().lower().startswith(
+            "insufficient evidence"
+        ):
+            return 1.0
+
         atoks = _content_tokens(answer)
         if not atoks:
-            return 1.0  # empty / refusal answer makes no unsupported claims
+            return 1.0  # empty answer makes no unsupported claims
         ctoks: set = set()
         for t in context_texts:
             ctoks |= _content_tokens(t)

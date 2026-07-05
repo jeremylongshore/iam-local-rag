@@ -53,6 +53,14 @@ def test_groundedness_verifier_detects_hallucination():
     assert v.score(hallucinated, context) < 0.6  # unsupported claims score low
 
 
+def test_groundedness_verifier_treats_refusal_as_grounded():
+    from nexus.retrieval.citation_verifier import INSUFFICIENT_EVIDENCE_ANSWER
+
+    v = GroundednessVerifier(threshold=0.6)
+    # A standard refusal must not be flagged ungrounded (safe as an inline gate).
+    assert v.score(INSUFFICIENT_EVIDENCE_ANSWER, ["totally unrelated context"]) == 1.0
+
+
 def test_recall_is_earned_not_tautological():
     from nexus.evals.base import Doc, EvalCase
     from nexus.evals.metrics.recall_at_k import RecallAtK

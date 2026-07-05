@@ -115,18 +115,23 @@ class PolicyEngine:
     # (not blocked) before the context reaches the model, so a weak model is far
     # less likely to obey injected instructions. Defense-in-depth atop the
     # untrusted-data prompt boundary.
-    # TIGHT patterns: each matches ONLY the imperative override phrase (no
-    # end-of-line consumption), and the role/word variants are gated on a
-    # specific cue, so normal prose ("reply with your name", "you are now a
-    # member") is NOT scrubbed and adjacent content (incl. secrets) is preserved.
+    # BEST-EFFORT defense-in-depth (NOT a complete injection defense — pattern
+    # matching is inherently bypassable). The PRIMARY control is the untrusted-
+    # context prompt boundary; this scrubber neutralizes common imperative
+    # override phrases. Each pattern matches ONLY the imperative phrase (no
+    # end-of-line consumption), and role/word variants are gated on a specific
+    # cue, so normal prose ("reply with your name", "you are now a member") is
+    # preserved and adjacent content (incl. secrets) is never consumed.
     _INJECTION_PATTERNS = [
-        r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:the\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|prompts?|directions?|messages?)",
-        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding)\s+(?:instructions?|prompts?|directions?|messages?|context)",
-        r"(?i)\bforget\s+(?:everything\s+above|all\s+(?:previous|prior)\s+instructions?|your\s+(?:previous\s+)?instructions?)",
-        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\s+\w+\s+(?:assistant|ai|model|bot|persona|chatbot|system)\b",
-        r"(?i)\bnew\s+(?:system\s+)?instructions?\s*:",
-        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\s+(?:instructions?|prompt|settings?)",
-        r"(?i)\b(?:reply|respond|answer|say|output|print)\s+with\s+the\s+(?:word|phrase|string|text)\s+\S+",
+        r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:the\s+|your\s+)?(?:previous|prior|above|earlier|preceding|system|initial|original)\s+(?:instructions?|prompts?|directions?|messages?|rules?)",
+        r"(?i)\bignore\s+(?:all\s+)?your\s+(?:previous\s+)?(?:instructions?|prompts?|rules?|directions?)",
+        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding|system|your)\s+(?:instructions?|prompts?|directions?|messages?|context|rules?)",
+        r"(?i)\bforget\s+(?:everything\s+above|all\s+(?:previous|prior)\s+instructions?|your\s+(?:previous\s+)?instructions?|what\s+you\s+were\s+told)",
+        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\s+(?:\w+\s+){0,4}(?:assistant|chatbot|persona|dan)\b",
+        r"(?i)\byou\s+are\s+(?:now\s+)?(?:dan\b|in\s+developer\s+mode|jailbroken)",
+        r"(?i)\bnew\s+(?:system\s+)?(?:instructions?|prompt|role)\s*:",
+        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\s+(?:instructions?|prompt|settings?|rules?)",
+        r"(?i)\b(?:reply|respond|answer|say|output|print)\s+(?:only\s+)?with\s+(?:the\s+)?(?:word|phrase|string|text)\s+\S+",
     ]
 
     def __init__(
