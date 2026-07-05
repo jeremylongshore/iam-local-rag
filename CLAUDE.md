@@ -35,16 +35,19 @@ The real code lives in the `nexus/` package:
 
 ```
 nexus/
+  cli.py             # the `nexus` CLI (index/ask/policy/providers/config/eval/audit)
   core/
     config.py        # env-driven Config (modes, providers, fallbacks) + validate()
     models.py        # Pydantic models incl. PrivacyReceipt
-    policy.py        # PolicyEngine — the single mode-aware outbound gate
+    policy.py        # PolicyEngine — the single mode-aware outbound gate + injection scrubber
     router.py        # provider selection + preferred->fallback->local routing
-    ledger.py        # SQLite audit ledger (tamper-evident chain = roadmap P4)
-    rag_pipeline.py  # index/query; embedding adapter; policy-gated calls
+    ledger.py        # tamper-evident hash-chained audit ledger + verify_chain()
+    rag_pipeline.py  # index/query; policy-gated calls; real citations + refusal
     providers/       # base ABCs + profiles + ollama/openai/anthropic/vertex + OpenAI-compatible
-  api/server.py      # FastAPI (auth + tenant boundary = roadmap P4)
-  ui/                # (empty; UI moves here in roadmap P6)
+  retrieval/         # Retriever interface: ChromaRetriever (real scores) + QmdRetriever + CitationVerifier
+  evals/             # eval harness + metrics (recall/citation/groundedness/refusal/privacy-leak/injection)
+  api/server.py      # FastAPI: API-key auth + CORS allowlist + /audit/verify
+  ui/                # (empty; Streamlit privacy meter moves here — roadmap P6)
 02-Src/app_nexus.py  # current Streamlit shim (kept until nexus/ui replaces it)
 03-Tests/            # pytest suite (unit + integration marker)
 000-docs/            # ALL documentation (filed per the IS doc standard)
@@ -52,16 +55,19 @@ nexus/
 
 **Documentation lives in `000-docs/`.** There is no `.directory-standards.md`
 and no `claudes-docs/`; the old `01-Docs/` is archived. New docs follow
-`NNN-CC-ABCD-description.md`. Start at `000-docs/000-INDEX.md` and the audit
-`000-docs/007-AA-AUDR-architecture-audit.md`.
+`NNN-CC-ABCD-description.md`. Start at `000-docs/000-INDEX.md`, the audit
+`007-AA-AUDR-architecture-audit.md`, and the implementation AAR
+`008-AA-AACR-implementation-aar.md`.
 
 ## Technology stack
 
 - **Python:** 3.11+
-- **Retrieval:** LangChain (1.x) + ChromaDB (Chroma default; qmd backend = roadmap)
-- **LLM runtime:** Ollama (local) + BYOK cloud adapters (Anthropic/OpenAI/Vertex/OpenAI-compatible)
-- **UI/API:** Streamlit + FastAPI
-- **Packaging/tooling:** `pyproject.toml` (ruff + mypy + pytest + coverage)
+- **Retrieval:** Chroma dense (default) or the homegrown **qmd** hybrid backend
+  (`NEXUS_RETRIEVER=qmd`) via `langchain`/`langchain-chroma`.
+- **LLM runtime:** Ollama (local; dedicated `OLLAMA_EMBED_MODEL`) via
+  `langchain-ollama` + BYOK cloud adapters (Anthropic/OpenAI/Vertex/OpenAI-compatible).
+- **Interfaces:** `nexus` CLI + FastAPI (authed) + Streamlit.
+- **Packaging/tooling:** `pyproject.toml` (ruff + mypy + pytest + coverage + audit harness).
 
 ## Development commands
 
@@ -69,8 +75,11 @@ and no `claudes-docs/`; the old `01-Docs/` is archived. New docs follow
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev,ui]'          # runtime + dev tooling + Streamlit
 
+nexus ask "…"                        # the CLI (index/ask/policy/providers/eval/audit)
+python -m nexus.evals.run [--live]   # run the eval harness
+
 pytest -m "not integration"          # unit gate (no Ollama needed)
-pytest -m integration                # needs a live Ollama
+pytest -m integration                # needs a live Ollama (small models fine)
 ruff check .                         # lint (blocking in CI)
 mypy                                 # type check (advisory in CI)
 pre-commit install                   # optional: mirror the lint gate locally
