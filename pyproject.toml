@@ -55,6 +55,9 @@ dev = [
 Homepage = "https://github.com/jeremylongshore/iam-local-rag"
 Repository = "https://github.com/jeremylongshore/iam-local-rag"
 
+[project.scripts]
+nexus = "nexus.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["nexus*"]
 
