@@ -36,12 +36,16 @@ def _allowed_roots(extra: Optional[List[str]] = None) -> List[str]:
 
 def confine_paths(paths: List[str], roots: List[str]) -> List[str]:
     """Resolve each path and require it to live under an allowed root."""
+    # normcase both sides so comparison holds on case-insensitive filesystems
+    # (Windows/macOS); on Linux it is a no-op.
+    norm_roots = [os.path.normcase(r) for r in roots]
     confined: List[str] = []
     for p in paths:
         rp = os.path.realpath(p)
+        nrp = os.path.normcase(rp)
         # os.path.join(root, "") normalizes the trailing separator so a root of
         # "/" (which would make root+os.sep "//") still matches its children.
-        if not any(rp == root or rp.startswith(os.path.join(root, "")) for root in roots):
+        if not any(nrp == nroot or nrp.startswith(os.path.join(nroot, "")) for nroot in norm_roots):
             raise ValueError(
                 f"refusing to index {p!r}: outside allowed roots {roots}. "
                 f"Extend with --allow-root or NEXUS_ALLOWED_INDEX_ROOTS."
@@ -106,7 +110,7 @@ def cmd_ask(args) -> int:
         print(
             f"\nprivacy receipt: {r.llm_provider} [{r.llm_destination}] · "
             f"{r.chars_sent_to_cloud} chars to cloud · "
-            f"redactions={sum(x.get('count', 0) for x in r.redactions)} · "
+            f"redactions={sum(x.get('count', 0) for x in (r.redactions or []))} · "
             f"policy_pass={r.policy_pass}"
         )
     return 0
