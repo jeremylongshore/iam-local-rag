@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev,ui]'
       - name: Unit tests (no external services)
-        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=65
+        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=75
 
   mutation:
     # L3 mutation testing (assertion-strength gate). ADVISORY baseline — the
@@ -80,20 +80,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install package + dev
+      - name: Install package + dev + ui
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install -e '.[dev,ui]'
       - name: Harness — hash verify
         run: audit-harness verify
       - name: Harness — test-bias scan (advisory)
         continue-on-error: true
         run: audit-harness bias 03-Tests
-      - name: Harness — CRAP score (advisory; truthful — radon is on PATH here)
-        # radon>=6.0 ships in the [dev] extra installed above, so the CRAP gate
-        # runs for real. NOTE: audit-harness crap FAILS-OPEN (returns pass:true)
-        # if radon is ever absent — an upstream harness bug (000-docs/009 #3);
-        # this job pins radon in-venv so the score is always truthful here.
+      - name: Coverage data for CRAP (coverage.json)
+        # audit-harness crap factors real per-method coverage into the CRAP score
+        # ONLY when coverage.json is present (its auto `coverage json` from a bare
+        # .coverage is unreliable). Without it every method is scored at coverage=0
+        # — which is what made the raw audit read avg 10.38 / max 272 (000-docs/009
+        # #2). Generate it explicitly so the score is truthful.
+        continue-on-error: true
+        run: pytest -m "not integration" --cov=nexus --cov-report=json -q
+      - name: Harness — CRAP score (advisory; truthful — radon + coverage.json present)
+        # radon>=6.0 ships in [dev]; coverage.json from the step above. NOTE:
+        # audit-harness crap FAILS-OPEN (pass:true) if radon is absent — an upstream
+        # harness bug (000-docs/009 #3); this job pins radon so the score is real.
+        # CAVEAT: the harness has no exclude config, so CRAP also scans 99-Archive/
+        # (quarantined legacy) — those blockers are not shipped code. Upstream ask:
+        # a CRAP exclude/ignore for archived trees.
         continue-on-error: true
         run: audit-harness crap
       - name: Harness — escape scan on PR diff (advisory)

@@ -250,3 +250,80 @@ class TestEnforceAndReceipt:
         assert summary["hybrid_safe_mode"] is True
         assert summary["max_snippet_length"] == 2000
         assert summary["policy_enforced"] is True
+
+
+# --------------------------------------------------------------------------- #
+# EVERY secret pattern, exercised (audit 009 #4).
+# Before this, only aws_access_key + openai_key were hit — the moat invariant
+# (#6, never ship a credential) was 25% exercised. Each case pairs a POSITIVE
+# sentinel that must match with a NEAR-MISS that must NOT, so line coverage can't
+# hide a rotted regex.
+# --------------------------------------------------------------------------- #
+# (name, positive sentinel, near-miss negative)
+SECRET_CASES = [
+    ("openai_key", "sk-" + "A" * 40, "sk-short"),
+    ("openai_project_key", "sk-proj-" + "a" * 24, "sk-proj-tooshort"),
+    ("anthropic_key", "sk-ant-" + "a" * 24, "sk-ant-short"),
+    ("aws_access_key", "AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMP"),  # 16 vs 14 chars
+    ("google_api_key", "AIza" + "a" * 35, "AIza" + "a" * 30),
+    ("github_token", "ghp_" + "b" * 36, "ghp_" + "b" * 30),
+    ("slack_token", "xoxb-" + "c" * 12, "xoxb-short"),
+    (
+        "private_key_block",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "-----BEGIN CERTIFICATE-----",
+    ),
+]
+
+
+class TestEverySecretPattern:
+    @pytest.mark.parametrize("name,positive,negative", SECRET_CASES, ids=[c[0] for c in SECRET_CASES])
+    def test_positive_matches_and_negative_does_not(self, name, positive, negative):
+        engine = PolicyEngine(mode="hybrid")
+        assert name in engine.scan_secrets(f"prefix {positive} suffix"), (
+            f"{name} pattern missed its sentinel {positive!r}"
+        )
+        assert name not in engine.scan_secrets(f"prefix {negative} suffix"), (
+            f"{name} pattern matched a near-miss {negative!r} (too loose)"
+        )
+
+    def test_every_defined_pattern_has_a_case(self):
+        # Guard against a new _SECRET_PATTERNS entry sneaking in untested.
+        defined = set(PolicyEngine._SECRET_PATTERNS)
+        covered = {c[0] for c in SECRET_CASES}
+        assert defined == covered, f"secret patterns without a test case: {defined - covered}"
+
+    def test_positive_secret_blocks_cloud_call_end_to_end(self):
+        # Each sentinel, planted in a payload, must hard-block a HYBRID cloud LLM.
+        engine = PolicyEngine(mode="hybrid")
+        for name, positive, _ in SECRET_CASES:
+            decision = engine.guard_llm(f"context: {positive}", CLOUD)
+            assert decision.allowed is False, f"{name} sentinel was NOT blocked"
+            assert name in decision.secret_hits
+
+
+# --------------------------------------------------------------------------- #
+# EVERY PII pattern redacts (audit 009 #12): phone + credit_card were defined
+# but never exercised with a matching input.
+# --------------------------------------------------------------------------- #
+class TestEveryPiiPattern:
+    def test_redact_phone(self):
+        engine = PolicyEngine(mode="hybrid")
+        red, redactions = engine.redact_pii("call me at (555) 123-4567 today")
+        assert "555" not in red and "4567" not in red
+        assert "[REDACTED:phone]" in red
+        assert any(r.kind == "phone" and r.count == 1 for r in redactions)
+
+    def test_redact_credit_card(self):
+        engine = PolicyEngine(mode="hybrid")
+        red, redactions = engine.redact_pii("card 4111111111111111 on file")
+        assert "4111111111111111" not in red
+        assert "[REDACTED:credit_card]" in red
+        assert any(r.kind == "credit_card" for r in redactions)
+
+    def test_every_defined_pii_pattern_has_a_positive_test(self):
+        # email/ssn covered in TestRedaction; phone/credit_card here. Fail if a
+        # new PII pattern is added without a matching redaction test.
+        defined = set(PolicyEngine._PII_PATTERNS)
+        tested = {"email", "ssn", "phone", "credit_card"}
+        assert defined == tested, f"PII patterns without a redaction test: {defined - tested}"

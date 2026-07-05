@@ -246,6 +246,33 @@ def test_refuses_when_evidence_below_floor(tmp_config, monkeypatch):
     assert llm.calls == 0  # no generation on refusal
 
 
+def test_cites_when_evidence_above_floor(tmp_config):
+    """The SUCCESS half of invariant #3 (audit 009 #5): when retrieval clears the
+    evidence floor, the pipeline generates AND returns non-empty, source-attributed
+    citations — not just the refusal branch. This runs in the blocking unit gate
+    (the equivalent live assertion previously existed only in the non-blocking
+    integration suite)."""
+    llm = FakeLLM(is_local=True, label="ollama")
+    pipe = RAGPipeline(
+        llm_provider=llm,
+        embed_provider=FakeEmbed(is_local=True),
+        workspace_id="ws_cite",
+        retriever=FakeRetriever(
+            [_chunk("cats are small carnivorous mammals", source="a.txt", score=0.9)],
+            is_local=True,
+        ),
+    )
+    pipe.policy = PolicyEngine(mode="local")
+    pipe.verifier.min_score = 0.5  # top score 0.9 clears the floor
+
+    resp = pipe.query(QueryRequest(question="what are cats?", workspace_id="ws_cite"))
+    assert resp.answer == "ANSWER"  # generated, not the refusal sentinel
+    assert resp.citations, "success path must return at least one citation"
+    assert resp.citations[0].source == "a.txt"
+    assert resp.citations[0].content_hash  # provenance carried through
+    assert llm.calls == 1  # the LLM was actually invoked exactly once
+
+
 # --------------------------------------------------------------------------- #
 # (e) provider fallback
 # --------------------------------------------------------------------------- #
