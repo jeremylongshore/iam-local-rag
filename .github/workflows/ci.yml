@@ -59,8 +59,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
-      - name: Mutation run (moat modules; survivors do not block)
-        run: mutmut run || true
+      - name: Coverage data (for mutant selection)
+        # mutmut --use-coverage reads .coverage to skip mutants on lines the unit
+        # suite never exercises — the mutmut-2.x way to keep runs bounded (its
+        # runner still excludes the Ollama-dependent integration tests).
+        run: pytest -m "not integration" --cov=nexus -q || true
+      - name: Mutation run (moat modules; --use-coverage; survivors do not block)
+        run: mutmut run --use-coverage || true
       - name: Mutation results
         run: mutmut results
 

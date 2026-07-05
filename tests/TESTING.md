@@ -18,7 +18,7 @@ them in-repo (never via `~/.claude` paths).
 | `coverage.line` | 65% (unit gate; current ~69%) | CI `test` job `--cov-fail-under=65` (blocking) |
 | `crap.prod` | 30 | advisory — CI `harness` job runs `audit-harness crap` with radon on PATH (truthful). ⚠ currently FAILS (avg 10.38, max 272); reduction tracked in epic `local-s9e` PR2 (provider tests raise coverage → drop CRAP). |
 | `crap.test` | 15 | advisory |
-| Mutation kill-rate | baseline (no floor yet) | CI `mutation` job (advisory). Targets in `setup.cfg [mutmut]`: `citation_verifier` + `ledger`. Baseline citation_verifier 10/20 killed. Floor set + `policy.py` added once PR2 lands its regex tests. |
+| Mutation kill-rate | baseline (no floor yet) | CI `mutation` job (advisory, `--use-coverage`). PHASED scope in `setup.cfg [mutmut]`: PR1 `citation_verifier` (baseline 10/20 killed) → PR2 `+policy.py` (with its regex tests) → PR3 `+ledger.py` (with the DI refactor). Each module enters with the PR that strengthens its tests so runs stay bounded. |
 | Ruff | 0 errors | CI `lint` job (blocking) |
 | Mypy | advisory | CI `lint` job (`continue-on-error`) |
 | Test-bias (smoke-only) | ≤5 / 100 tests target | CI `harness` job (advisory). Currently 14 (~9.4/100) — reduced in PR3. |
@@ -26,6 +26,19 @@ them in-repo (never via `~/.claude` paths).
 
 Coverage is a **ratchet**: raise the floor as coverage rises; never lower it to
 pass a PR (escape-scan REFUSES a lowered floor).
+
+### Machine-readable thresholds
+
+`audit-harness escape-scan` reads the floors from these exact `key: value` lines
+(it greps `TESTING.md` under `set -euo pipefail`, so all three MUST be present as
+colon lines — a missing one silently aborts the scanner mid-run). Keep them in
+sync with the human Thresholds table above and the CI gates.
+
+```yaml
+coverage.line: 65
+coverage.branch: 55
+mutation.kill_rate: 0   # advisory baseline — no enforced kill-rate floor yet (see epic local-s9e)
+```
 
 > **⚠ Gate-integrity note (000-docs/009 #3):** `audit-harness crap` returns
 > `pass:true` / exit 0 when radon is not importable — a fail-**open** degrade

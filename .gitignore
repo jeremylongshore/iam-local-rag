@@ -45,6 +45,7 @@ reports/
 
 # Mutation testing (mutmut)
 .mutmut-cache
+*.bak
 
 # IDE
 .vscode/
