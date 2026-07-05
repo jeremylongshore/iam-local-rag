@@ -15,21 +15,29 @@ you **bring your own** cloud model (Anthropic, OpenAI, Vertex, or any
 OpenAI-compatible endpoint) **only when you choose to** — with every outbound
 call passing through one policy gate.
 
-- **Runs fully local.** `NEXUS_MODE=local` makes zero external calls (enforced,
-  fail-closed) — including embeddings.
-- **BYOK & portable.** Thin per-provider adapters behind our own interfaces; no
-  vendor agent-SDK lock-in. Swap providers with an env var.
-- **Policy-bounded cloud.** In `hybrid`, retrieval + embeddings stay local and
-  only redacted, capped snippets reach the cloud LLM. Secrets in your corpus are
-  blocked before any external call.
-- **Verifiable trust.** Every query can emit a **privacy receipt** (provider,
-  chars/tokens out, chunk ids + hashes, redactions, local-vs-cloud, policy
-  pass/fail). Retrieved text is treated as untrusted data, never instructions.
-
 > Honest scope: NEXUS *can* run fully local (air-gapped), but it also ships cloud
 > provider adapters and defaults to `hybrid`. It is **designed for privacy and
 > supports local-only operation** — it is not a compliance certification and
 > makes no HIPAA/GDPR/SOC 2 claim.
+
+## The trust layer (the point)
+
+Not "a shinier chatbot" — the moat is verifiable trust, enforced in code and
+measured on every run:
+
+- **One policy gate on every outbound call** (LLM *and* embeddings). `local` mode
+  makes **zero** external calls, fail-closed. `hybrid` forces local embeddings and
+  sends only redacted, capped snippets. **Secrets in your corpus are blocked
+  before any cloud call.**
+- **Verifiable citations + refusal.** Real relevance scores; the pipeline **refuses
+  in code** ("insufficient evidence") rather than guessing.
+- **Privacy receipt per query** — provider/model, chars/tokens out, chunk ids +
+  hashes, redactions, local-vs-cloud, policy pass/fail.
+- **Tamper-evident audit ledger** — hash-chained; `nexus audit verify` proves it.
+- **Untrusted-data handling** — retrieved text is data, never instructions; an
+  injection scrubber neutralizes common override phrases (defense-in-depth).
+- **It measures itself** — a built-in eval harness scores recall, citation
+  coverage, groundedness, refusal, privacy-leak, and injection resistance.
 
 ## Modes
 
@@ -39,7 +47,7 @@ call passing through one policy gate.
 | `hybrid` (default) | local (forced) | cloud BYOK | redacted snippets only |
 | `cloud` | cloud | cloud | explicit |
 
-## Quick start
+## Quick start (the `nexus` CLI)
 
 ```bash
 git clone https://github.com/jeremylongshore/iam-local-rag.git
@@ -47,38 +55,45 @@ cd iam-local-rag
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev,ui]'
 
-# Local-only path (no keys): install Ollama + a model
-curl -fsSL https://ollama.ai/install.sh | sh && ollama pull llama3
+# Local-only path (no keys) — small, fast models:
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen2.5:0.5b        # generation (~400MB)
+ollama pull nomic-embed-text    # embeddings  (~274MB)
+export NEXUS_MODE=local OLLAMA_MODEL=qwen2.5:0.5b OLLAMA_EMBED_MODEL=nomic-embed-text
 
-# Run the UI (Streamlit) or the API (FastAPI)
-streamlit run 02-Src/app_nexus.py
-# or:  uvicorn nexus.api.server:app --reload
+nexus index 000-docs/*.md               # index your documents (path-confined to cwd)
+nexus ask "What does NEXUS enforce?"    # grounded answer + sources + privacy receipt
+nexus policy "email a@b.com key sk-..."  # preview redactions/secret-block — sends nothing
+nexus providers                          # provider config + availability
+nexus eval                               # run the offline eval suite
+nexus audit verify                       # verify the tamper-evident ledger
 ```
 
-BYOK: copy `.env.example` to `.env` and set `NEXUS_MODE`, `NEXUS_LLM_PROVIDER`,
-and the relevant key (e.g. `ANTHROPIC_API_KEY`). See `.env.example` for all
-options, including `NEXUS_EMBED_PROVIDER`, `OPENAI_COMPATIBLE_BASE_URL`
-(OpenRouter / Together / vLLM), and `NEXUS_LLM_FALLBACK`.
+Also available: **FastAPI** (`uvicorn nexus.api.server:app` — set `NEXUS_API_KEY`
+to require auth) and a **Streamlit** UI (`streamlit run 02-Src/app_nexus.py`).
+
+BYOK: copy `.env.example` to `.env` and set `NEXUS_LLM_PROVIDER` + the relevant
+key. Options include `NEXUS_EMBED_PROVIDER`, `OPENAI_COMPATIBLE_BASE_URL`
+(OpenRouter / Together / vLLM), `NEXUS_LLM_FALLBACK`, and `NEXUS_RETRIEVER=qmd`.
 
 ## Technology
 
-- **Core package:** `nexus/` (providers, router, policy, ledger, pipeline, API).
-- **Retrieval:** LangChain + ChromaDB (Chroma default; a qmd hybrid+rerank
-  backend is on the roadmap).
-- **LLM runtime:** Ollama (local) + BYOK cloud adapters.
-- **UI/API:** Streamlit (`02-Src/app_nexus.py`) + FastAPI (`nexus/api/server.py`).
+- **Core package:** `nexus/` — `core/` (config, models, policy, router, ledger,
+  pipeline, providers), `retrieval/` (Chroma + qmd backends, citation verifier),
+  `evals/` (harness + metrics), `api/` (FastAPI), `cli.py`.
+- **Retrieval:** Chroma dense (default) or the homegrown **qmd** hybrid
+  (BM25 + vector + rerank) engine via `NEXUS_RETRIEVER=qmd`.
+- **LLM runtime:** Ollama (local; dedicated `OLLAMA_EMBED_MODEL`) + BYOK cloud
+  adapters (lazily imported — `import nexus` pulls no cloud SDK).
 - **Python:** 3.11+.
 
 ## Documentation
 
-All docs live in **`000-docs/`** (filed per the Intent Solutions document
-standard). Start with:
+All docs live in **`000-docs/`**. Start with:
 
-- `000-docs/007-AA-AUDR-architecture-audit.md` — the architecture audit + roadmap.
+- `000-docs/008-AA-AACR-implementation-aar.md` — what was built (P0–P6) + residual risks.
+- `000-docs/007-AA-AUDR-architecture-audit.md` — the baseline audit + roadmap.
 - `000-docs/000-INDEX.md` — the document index.
-
-Backlog is tracked with beads (`bd ready`); the refactor epic is
-"Refactor NEXUS into a local-first BYOK document-intelligence platform".
 
 ## Support
 

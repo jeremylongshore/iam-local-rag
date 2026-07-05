@@ -19,10 +19,11 @@
 
 - `004-RA-AUDT-directory-cleanup-compliance.md` — Directory cleanup compliance audit report
 
-### AA - After Action & Review (2 documents)
+### AA - After Action & Review (3 documents)
 
 - `006-AA-REPT-nexus-hybrid-cloud-team-upgrade.md` — Comprehensive AAR for NEXUS upgrade
 - `007-AA-AUDR-architecture-audit.md` — Baseline architecture audit for the local-first BYOK refactor (epic `local-6p0`)
+- `008-AA-AACR-implementation-aar.md` — Implementation AAR: what was built P0–P6, process, residual risks, competitive review
 
 ---
 
@@ -35,6 +36,7 @@
 - `005-DR-GUID-nexus-hybrid-upgrade-summary.md`
 - `006-AA-REPT-nexus-hybrid-cloud-team-upgrade.md`
 - `007-AA-AUDR-architecture-audit.md`
+- `008-AA-AACR-implementation-aar.md`
 
 ---
 
@@ -47,7 +49,7 @@
 - **short-description** = 1-4 words, kebab-case
 - **ext** = File extension
 
-**Next Available Sequence:** `008`
+**Next Available Sequence:** `009`
 
 ---
 
