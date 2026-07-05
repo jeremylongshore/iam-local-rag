@@ -111,6 +111,29 @@ class PolicyEngine:
         "credit_card": r"\b\d{13,19}\b",
     }
 
+    # High-signal prompt-injection phrases in UNTRUSTED context — neutralized
+    # (not blocked) before the context reaches the model, so a weak model is far
+    # less likely to obey injected instructions. Defense-in-depth atop the
+    # untrusted-data prompt boundary.
+    # BEST-EFFORT defense-in-depth (NOT a complete injection defense — pattern
+    # matching is inherently bypassable). The PRIMARY control is the untrusted-
+    # context prompt boundary; this scrubber neutralizes common imperative
+    # override phrases. Each pattern matches ONLY the imperative phrase (no
+    # end-of-line consumption), and role/word variants are gated on a specific
+    # cue, so normal prose ("reply with your name", "you are now a member") is
+    # preserved and adjacent content (incl. secrets) is never consumed.
+    _INJECTION_PATTERNS = [
+        r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:the\s+|your\s+)?(?:previous|prior|above|earlier|preceding|system|initial|original)\s+(?:instructions?|prompts?|directions?|messages?|rules?)",
+        r"(?i)\bignore\s+(?:all\s+)?your\s+(?:previous\s+)?(?:instructions?|prompts?|rules?|directions?)",
+        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding|system|your)\s+(?:instructions?|prompts?|directions?|messages?|context|rules?)",
+        r"(?i)\bforget\s+(?:everything\s+above|all\s+(?:previous|prior)\s+instructions?|your\s+(?:previous\s+)?instructions?|what\s+you\s+were\s+told)",
+        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\s+(?:\w+\s+){0,4}(?:assistant|chatbot|persona|dan)\b",
+        r"(?i)\byou\s+are\s+(?:now\s+)?(?:dan\b|in\s+developer\s+mode|jailbroken)",
+        r"(?i)\bnew\s+(?:system\s+)?(?:instructions?|prompt|role)\s*:",
+        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\s+(?:instructions?|prompt|settings?|rules?)",
+        r"(?i)\b(?:reply|respond|answer|say|output|print)\s+(?:only\s+)?with\s+(?:the\s+)?(?:word|phrase|string|text)\s+\S+",
+    ]
+
     def __init__(
         self,
         mode=None,
@@ -126,6 +149,7 @@ class PolicyEngine:
         )
         self._secret_res = {k: re.compile(v) for k, v in self._SECRET_PATTERNS.items()}
         self._pii_res = {k: re.compile(v) for k, v in self._PII_PATTERNS.items()}
+        self._injection_res = [re.compile(p) for p in self._INJECTION_PATTERNS]
 
     # --- helpers ---
 
@@ -144,6 +168,14 @@ class PolicyEngine:
             if n:
                 redactions.append(Redaction(kind=name, count=n))
         return text, redactions
+
+    def scrub_injection(self, text: str) -> Tuple[str, int]:
+        """Neutralize imperative prompt-injection phrases in untrusted context."""
+        count = 0
+        for rx in self._injection_res:
+            text, n = rx.subn("[flagged: possible prompt injection removed]", text)
+            count += n
+        return text, count
 
     def prepare_context(self, citations: List[Citation]) -> ContextBundle:
         """
@@ -165,6 +197,10 @@ class PolicyEngine:
             red_excerpt, reds = self.redact_pii(excerpt)
             for r in reds:
                 totals[r.kind] = totals.get(r.kind, 0) + r.count
+
+            red_excerpt, inj_n = self.scrub_injection(red_excerpt)
+            if inj_n:
+                totals["injection"] = totals.get("injection", 0) + inj_n
 
             if self.hybrid_safe_mode and len(red_excerpt) > self.max_snippet_length:
                 red_excerpt = red_excerpt[: self.max_snippet_length] + "..."
