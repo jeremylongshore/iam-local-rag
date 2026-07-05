@@ -11,23 +11,37 @@ from .base import Doc, EvalCase
 SECRET_SENTINEL = "AKIAIOSFODNN7EXAMPLE"
 
 GOLDEN_CASES = [
+    # Corpus deliberately LARGER than k(=3) with topical distractors, so recall@k
+    # and citation coverage are earned by ranking — a broken retriever drops the
+    # relevant doc out of the top-3 and the metrics fall below threshold.
+    # The relevant doc is placed LAST (position > k) so only a working keyword
+    # ranker surfaces it into the top-3 — an insertion-order or broken retriever
+    # misses it and the metrics correctly drop below threshold.
     EvalCase(
         id="eiffel-facts",
         question="Where is the Eiffel Tower and how tall is it?",
         docs=[
-            Doc("eiffel.txt", "The Eiffel Tower is in Paris, France, and is 330 metres tall.", is_relevant=True),
-            Doc("cats.txt", "A cat is a small domesticated carnivore."),
+            Doc("cats.txt", "A cat is a small domesticated carnivore kept as a pet."),
             Doc("weather.txt", "It rained heavily in London last week."),
+            Doc("recipe.txt", "Whisk three eggs with flour and milk to make pancakes."),
+            Doc("stocks.txt", "The bond market rallied on lower inflation expectations."),
+            Doc("garden.txt", "Tomatoes need full sun and regular watering to ripen."),
+            Doc("music.txt", "The orchestra tuned their instruments before the concert."),
+            Doc("eiffel.txt", "The Eiffel Tower is in Paris, France, and is 330 metres tall.", is_relevant=True),
         ],
         must_contain=["Paris"],
         scripted_answer="The Eiffel Tower is in Paris, France and is 330 metres tall. [Source: eiffel.txt]",
     ),
     EvalCase(
         id="python-gil",
-        question="What does the Python GIL do?",
+        question="What does the Python GIL global interpreter lock do?",
         docs=[
+            Doc("java.txt", "Java uses the JVM and has garbage collection."),
+            Doc("cooking.txt", "Simmer the sauce for twenty minutes, stirring occasionally."),
+            Doc("travel.txt", "The train departs from platform nine at noon."),
+            Doc("history.txt", "The treaty was signed in the autumn of that year."),
+            Doc("sports.txt", "The striker scored twice in the second half."),
             Doc("gil.txt", "The Python GIL is a global interpreter lock that allows only one thread to execute Python bytecode at a time.", is_relevant=True),
-            Doc("java.txt", "Java uses the JVM and has no global interpreter lock."),
         ],
         must_contain=["lock"],
         scripted_answer="The Python GIL is a global interpreter lock that lets only one thread execute bytecode at a time. [Source: gil.txt]",

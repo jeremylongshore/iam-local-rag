@@ -15,7 +15,9 @@ class EvalReport:
 
     @property
     def passed(self) -> bool:
-        return all(r.passed for r in self.results)
+        # Vacuous-pass guard: a run that produced NO metric results must fail,
+        # so `nexus.evals.run` can't exit 0 having tested nothing.
+        return bool(self.results) and all(r.passed for r in self.results)
 
     def as_dict(self) -> dict:
         return {

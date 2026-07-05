@@ -42,3 +42,34 @@ def test_groundedness_verifier():
     assert v.score("Paris France tower", ["The Eiffel Tower is in Paris, France."]) > 0.5
     assert v.score("", ["anything"]) == 1.0  # empty/refusal answer is trivially grounded
     assert v.is_grounded("Paris city", ["Paris is a city in France"])
+
+
+def test_groundedness_verifier_detects_hallucination():
+    v = GroundednessVerifier(threshold=0.6)
+    context = ["The Eiffel Tower is in Paris, France, and is 330 metres tall."]
+    grounded = "The Eiffel Tower is in Paris and is 330 metres tall."
+    hallucinated = "The Statue of Liberty stands in Tokyo Japan and weighs nine thousand tons."
+    assert v.score(grounded, context) >= 0.6
+    assert v.score(hallucinated, context) < 0.6  # unsupported claims score low
+
+
+def test_recall_is_earned_not_tautological():
+    from nexus.evals.base import Doc, EvalCase
+    from nexus.evals.metrics.recall_at_k import RecallAtK
+
+    # Relevant doc is LAST among 6 (position > k); only a working keyword ranker
+    # surfaces it into the top-3, so a passing score proves ranking is exercised.
+    case = EvalCase(
+        id="zebra",
+        question="tell me about zebra black and white stripes",
+        docs=[
+            Doc("a.txt", "Clouds are white and float in the sky."),
+            Doc("b.txt", "Cars have four wheels and an engine."),
+            Doc("c.txt", "Soup is served hot in a bowl."),
+            Doc("d.txt", "Rocks are hard and heavy."),
+            Doc("e.txt", "Rain makes the ground wet."),
+            Doc("z.txt", "A zebra has black and white stripes.", is_relevant=True),
+        ],
+    )
+    r = RecallAtK().evaluate([case])
+    assert r.score == 1.0  # earned: the ranker found the relevant doc despite it being last

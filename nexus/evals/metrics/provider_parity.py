@@ -64,24 +64,35 @@ class ProviderParity:
         per_case: List[dict] = []
         total_runs = 0
         passed_runs = 0
+        answerable_cases = 0  # >=1 of the runs produced a correct answer
         for case in applicable:
             tokens = [t.lower() for t in case.must_contain]
             runs: List[dict] = []
+            case_ok = 0
             for _ in range(_RUNS):
                 total_runs += 1
                 ok, note = self._run_once(case, tokens)
                 if ok:
                     passed_runs += 1
+                    case_ok += 1
                 runs.append(note)
-            per_case.append({"id": case.id, "must_contain": case.must_contain, "runs": runs})
+            if case_ok >= 1:
+                answerable_cases += 1
+            per_case.append(
+                {"id": case.id, "must_contain": case.must_contain, "answerable": case_ok >= 1, "runs": runs}
+            )
 
+        # Drift score is informational; the GATE is the "answerable" floor: every
+        # factual case must produce a correct grounded answer on at least one run,
+        # so a pipeline that can never answer correctly still fails.
         score = passed_runs / total_runs if total_runs else 1.0
+        answerable = answerable_cases == len(applicable)
         return MetricResult(
             name=self.name,
             score=score,
-            passed=True,  # informational — surfaces model drift, does not gate NEXUS
-            detail=f"[informational] {passed_runs}/{total_runs} live runs contained all "
-            f"tokens over {len(applicable)} case(s), {_RUNS} runs each",
+            passed=answerable,
+            detail=f"answerable={answerable_cases}/{len(applicable)} cases; drift-score "
+            f"[informational] {passed_runs}/{total_runs} runs matched, {_RUNS} runs each",
             n=len(applicable),
             per_case=per_case,
         )

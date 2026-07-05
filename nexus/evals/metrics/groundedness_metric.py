@@ -40,8 +40,9 @@ class GroundednessMetric:
                         max_results=3,
                     )
                 )
-            except Exception as exc:  # noqa: BLE001 - skip cases the pipeline can't answer
-                per_case.append({"id": case.id, "skipped": str(exc)})
+            except Exception as exc:  # noqa: BLE001 - a pipeline that can't answer is UNGROUNDED
+                scores.append(0.0)
+                per_case.append({"id": case.id, "score": 0.0, "error": str(exc)})
                 continue
 
             score = verifier.score(
@@ -50,7 +51,8 @@ class GroundednessMetric:
             scores.append(score)
             per_case.append({"id": case.id, "score": round(score, 4)})
 
-        if not scores:
+        if not applicable:
+            # Genuinely nothing to evaluate (vs. everything errored, handled above).
             return MetricResult(
                 name=self.name,
                 score=1.0,

@@ -79,6 +79,20 @@ class TestInjectionScrub:
         _, n = engine.scrub_injection("New hires complete security training in week one.")
         assert n == 0
 
+    def test_benign_prose_not_over_scrubbed(self):
+        engine = PolicyEngine(mode="hybrid")
+        benign = [
+            "To register, please reply with your full name and the date.",
+            "The student should answer with a complete sentence and cite the source.",
+            "Support staff must respond with empathy and escalate within 24 hours.",
+            "Congratulations, you are now a verified member of the loyalty program.",
+            "You are now the primary beneficiary listed on the policy.",
+            "Please disregard the previous email; the meeting is confirmed.",
+        ]
+        for s in benign:
+            _, n = engine.scrub_injection(s)
+            assert n == 0, f"over-scrubbed benign prose: {s!r}"
+
     def test_prepare_context_neutralizes_injection(self):
         engine = PolicyEngine(mode="hybrid", max_snippet_length=2000)
         c = Citation(

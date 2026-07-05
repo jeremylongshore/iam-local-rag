@@ -115,14 +115,18 @@ class PolicyEngine:
     # (not blocked) before the context reaches the model, so a weak model is far
     # less likely to obey injected instructions. Defense-in-depth atop the
     # untrusted-data prompt boundary.
+    # TIGHT patterns: each matches ONLY the imperative override phrase (no
+    # end-of-line consumption), and the role/word variants are gated on a
+    # specific cue, so normal prose ("reply with your name", "you are now a
+    # member") is NOT scrubbed and adjacent content (incl. secrets) is preserved.
     _INJECTION_PATTERNS = [
         r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:the\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|prompts?|directions?|messages?)",
-        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding)\b[^.\n]*",
-        r"(?i)\bforget\s+(?:everything|all\s+(?:previous|prior)|your\s+(?:previous\s+)?instructions?)\b[^.\n]*",
-        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\b[^.\n]*",
-        r"(?i)\bnew\s+instructions?\s*:[^.\n]*",
-        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\b[^.\n]*",
-        r"(?i)\b(?:reply|respond|answer|say)\s+(?:only\s+)?with\s+(?:the\s+word\s+)?[^.\n]*",
+        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding)\s+(?:instructions?|prompts?|directions?|messages?|context)",
+        r"(?i)\bforget\s+(?:everything\s+above|all\s+(?:previous|prior)\s+instructions?|your\s+(?:previous\s+)?instructions?)",
+        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\s+\w+\s+(?:assistant|ai|model|bot|persona|chatbot|system)\b",
+        r"(?i)\bnew\s+(?:system\s+)?instructions?\s*:",
+        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\s+(?:instructions?|prompt|settings?)",
+        r"(?i)\b(?:reply|respond|answer|say|output|print)\s+with\s+the\s+(?:word|phrase|string|text)\s+\S+",
     ]
 
     def __init__(
