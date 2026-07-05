@@ -15,10 +15,10 @@ them in-repo (never via `~/.claude` paths).
 
 | Gate | Floor | Enforced |
 |---|---|---|
-| `coverage.line` | 65% (unit gate; current ~69%) | CI `test` job `--cov-fail-under=65` (blocking) |
-| `crap.prod` | 30 | advisory — CI `harness` job runs `audit-harness crap` with radon on PATH (truthful). ⚠ currently FAILS (avg 10.38, max 272); reduction tracked in epic `local-s9e` PR2 (provider tests raise coverage → drop CRAP). |
+| `coverage.line` | 75% (unit gate; current ~78%) | CI `test` job `--cov-fail-under=75` (blocking) |
+| `crap.prod` | 30 | advisory — CI `harness` job runs `audit-harness crap` with **radon on PATH + `coverage.json` present** (truthful). With real coverage factored in, `nexus/` blockers are 4 (all low-coverage `evals/metrics/*`); the raw "avg 10.38 / max 272" was coverage=0 scoring + the harness scanning `99-Archive/` legacy (no exclude config — upstream ask). |
 | `crap.test` | 15 | advisory |
-| Mutation kill-rate | baseline (no floor yet) | CI `mutation` job (advisory, `--use-coverage`). PHASED scope in `setup.cfg [mutmut]`: PR1 `citation_verifier` (baseline 10/20 killed) → PR2 `+policy.py` (with its regex tests) → PR3 `+ledger.py` (with the DI refactor). Each module enters with the PR that strengthens its tests so runs stay bounded. |
+| Mutation kill-rate | baseline (no floor yet) | CI `mutation` job (advisory, `--use-coverage`). Scope in `setup.cfg [mutmut]`: PR1 `citation_verifier` (baseline 10/20) → PR3 `+ledger.py`. `policy.py` stays OUT (regex-string mutants are low-value noise); its regexes are covered by the PR2 positive + near-miss boundary tests instead. |
 | Ruff | 0 errors | CI `lint` job (blocking) |
 | Mypy | advisory | CI `lint` job (`continue-on-error`) |
 | Test-bias (smoke-only) | ≤5 / 100 tests target | CI `harness` job (advisory). Currently 14 (~9.4/100) — reduced in PR3. |
@@ -35,7 +35,7 @@ colon lines — a missing one silently aborts the scanner mid-run). Keep them in
 sync with the human Thresholds table above and the CI gates.
 
 ```yaml
-coverage.line: 65
+coverage.line: 75
 coverage.branch: 55
 # advisory baseline — no enforced kill-rate floor yet (see epic local-s9e)
 mutation.kill_rate: 0
@@ -53,7 +53,7 @@ mutation.kill_rate: 0
 |---|---|---|
 | L1 git hooks & CI | partial | CI (lint/test/harness/integration) + `.pre-commit-config.yaml` present; run `pre-commit install` locally |
 | L2 static & lint | installed | ruff (blocking) + mypy (advisory) |
-| L3 unit | installed | ~130 unit tests; PolicyEngine + provider + ledger + privacy-gate. Mutation gate (mutmut) added 2026-07-05 — advisory baseline. |
+| L3 unit | installed | ~182 unit tests; PolicyEngine + provider adapters (behavioral, SDK-mocked) + ABC contract + ledger + privacy-gate + single-gate AST guard. Mutation gate (mutmut) advisory. |
 | L4 integration | installed | `test_api` + `test_integration` (marker `integration`; needs Ollama). ⚠ CI job is `continue-on-error` — a mocked-provider blocking variant lands in PR3. |
 | L5 system (perf/sec/a11y) | waived (early stage) | security control = PolicyEngine + secret-scan; dedicated SAST = roadmap P5 |
 | L6 E2E / BDD | waived (early stage) | Gherkin/E2E deferred; optional `features/` acceptance layer for the 7 invariants tracked in epic `local-s9e` PR4 |
@@ -84,12 +84,12 @@ test. Formal RTM = roadmap.
 ## Last audit
 
 - **Date:** 2026-07-05 (specialist field-team audit — `000-docs/009-TQ-AUDT`)
-- **Grade:** B (disciplined suite; 26 verified findings being remediated under epic `local-s9e`)
-- **Unit coverage:** ~69% (floor raised 55 → 65)
-- **CRAP:** FAILS on real radon (avg 10.38, max 272) — reduction via PR2 provider coverage
+- **Grade:** B → B+ in progress (26 verified findings being remediated under epic `local-s9e`; PR1+PR2 landed)
+- **Unit coverage:** ~78% (floor raised 55 → 65 → 75). Provider adapters 20-23% → 58-82%.
+- **CRAP:** with coverage.json + radon, `nexus/` blockers 43 → 4 (all low-coverage `evals/metrics/*`); "max 272" was `99-Archive/` legacy
 - **Mutation:** gate installed (advisory); citation_verifier baseline 10/20 killed
 - **Test-bias:** 14 smoke-only (~9.4/100) — reduced in PR3
-- **Escape-scan:** clean (baseline)
+- **Escape-scan:** clean; floor-lowering gate now actually enforced (PR1 fix)
 
 ### Prior audit
 
