@@ -325,3 +325,46 @@ def test_fallback_skips_unavailable_preferred(monkeypatch):
         preferred="openai", fallbacks=["anthropic"], mode="cloud"
     )
     assert provider.get_privacy_profile().provider_label == "anthropic"
+
+
+# --------------------------------------------------------------------------- #
+# (g) ingestion loader branches (009 #24) — PDF + unsupported-extension skip
+# --------------------------------------------------------------------------- #
+def _ingest_pipeline(tmp_config):
+    pipe = RAGPipeline(
+        llm_provider=FakeLLM(is_local=True),
+        embed_provider=FakeEmbed(is_local=True),
+        workspace_id="ws_ingest",
+        retriever=FakeRetriever([], is_local=True),
+    )
+    pipe.policy = PolicyEngine(mode="local")
+    return pipe
+
+
+def test_index_pdf_exercises_pypdf_loader(tmp_config):
+    from pypdf import PdfWriter
+
+    pdf_path = tmp_config / "doc.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    with open(pdf_path, "wb") as f:
+        writer.write(f)
+
+    pipe = _ingest_pipeline(tmp_config)
+    result = pipe.index_documents(IndexRequest(paths=[str(pdf_path)], workspace_id="ws_ingest"))
+
+    # The .pdf branch (PyPDFLoader) ran without error and recorded the source —
+    # previously only .txt/.md were ever loaded in a test.
+    assert any(s.file_path == str(pdf_path) for s in result.document_sources)
+
+
+def test_index_unsupported_extension_is_skipped(tmp_config):
+    bad = tmp_config / "notes.xyz"
+    bad.write_text("content that must not be indexed")
+
+    pipe = _ingest_pipeline(tmp_config)
+    result = pipe.index_documents(IndexRequest(paths=[str(bad)], workspace_id="ws_ingest"))
+
+    # Unsupported extension hits the `continue` branch: no source, no chunks.
+    assert result.document_sources == []
+    assert result.total_chunks == 0

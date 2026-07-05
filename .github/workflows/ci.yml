@@ -89,6 +89,9 @@ jobs:
       - name: Harness — test-bias scan (advisory)
         continue-on-error: true
         run: audit-harness bias 03-Tests
+      - name: Harness — Gherkin lint (advisory; features/ now exists)
+        continue-on-error: true
+        run: audit-harness gherkin-lint
       - name: Coverage data for CRAP (coverage.json)
         # audit-harness crap factors real per-method coverage into the CRAP score
         # ONLY when coverage.json is present (its auto `coverage json` from a bare

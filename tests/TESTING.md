@@ -53,11 +53,11 @@ mutation.kill_rate: 0
 |---|---|---|
 | L1 git hooks & CI | partial | CI (lint/test/harness/integration) + `.pre-commit-config.yaml` present; run `pre-commit install` locally |
 | L2 static & lint | installed | ruff (blocking) + mypy (advisory) |
-| L3 unit | installed | ~182 unit tests; PolicyEngine + provider adapters (behavioral, SDK-mocked) + ABC contract + ledger + privacy-gate + single-gate AST guard. Mutation gate (mutmut) advisory. |
-| L4 integration | installed | `test_api` + `test_integration` (marker `integration`; needs Ollama). A mocked-provider **blocking** variant (`test_api_mocked.py`, shared `conftest.py` fixture) now covers endpoint routing/auth/errors without Ollama; two mis-asserting integration tests (redaction/truncation) now assert real behavior. |
+| L3 unit | installed | ~216 unit tests; PolicyEngine + provider adapters (behavioral, SDK-mocked) + ABC contract + ledger + privacy-gate + single-gate AST guard + **property/fuzz** (`test_properties.py`, hypothesis: regex totality + hash-chain determinism/injectivity). Mutation gate (mutmut) advisory. |
+| L4 integration | installed | `test_api` + `test_integration` (marker `integration`; needs Ollama). A mocked-provider **blocking** variant (`test_api_mocked.py`, shared `conftest.py` fixture) covers endpoint routing/auth/errors without Ollama; two mis-asserting integration tests (redaction/truncation) now assert real behavior. |
 | L5 system (perf/sec/a11y) | waived (early stage) | security control = PolicyEngine + secret-scan; dedicated SAST = roadmap P5 |
-| L6 E2E / BDD | waived (early stage) | Gherkin/E2E deferred; optional `features/` acceptance layer for the 7 invariants tracked in epic `local-s9e` PR4 |
-| L7 acceptance / UAT | waived (early stage) | product pre-1.0 |
+| L6 E2E / BDD | **installed (seed)** | `features/acceptance_invariants.feature` + `test_bdd_acceptance.py` (pytest-bdd) — executable Gherkin for the policy-gate, secret-block, and cited-or-refuse invariants. Runs in the unit gate; CI `harness` job gherkin-lints it. Grows toward all 7 invariants. |
+| L7 acceptance / UAT | **installed (seed)** | the BDD scenarios above ARE the acceptance specs, bound to real code (not prose). |
 
 ## Installed gates
 
@@ -71,8 +71,10 @@ mutation.kill_rate: 0
 
 ## Waived layers (engineer policy)
 
-L5 (system: perf/sec/a11y/chaos), L6 (E2E/BDD), L7 (UAT) — waived at this stage;
-tracked as roadmap beads (P5 evals incl. injection/privacy-leak corpus; P6 UI/CLI).
+L5 (system: perf/sec/a11y/chaos) — waived at this stage (security control =
+PolicyEngine + secret-scan; dedicated SAST is roadmap). L6/L7 are no longer
+waived: a seed BDD acceptance layer landed 2026-07-05 (epic `local-s9e` PR4) and
+grows toward all 7 invariants.
 
 ## Traceability
 
@@ -84,11 +86,13 @@ test. Formal RTM = roadmap.
 ## Last audit
 
 - **Date:** 2026-07-05 (specialist field-team audit — `000-docs/009-TQ-AUDT`)
-- **Grade:** B → B+ in progress (26 verified findings being remediated under epic `local-s9e`; PR1-PR3 landed)
-- **Unit coverage:** ~80% (floor raised 55 → 65 → 75 → 78). Provider adapters 20-23% → 58-82%; server.py 60% → 71%; cli.py 72% → 90%.
+- **Grade:** B → A− (all 26 verified findings remediated under epic `local-s9e`; PR1-PR4 landed)
+- **Unit coverage:** ~80% (216 unit tests; floor raised 55 → 65 → 75 → 78). Provider adapters 20-23% → 58-82%; server.py 60% → 71%; cli.py 72% → 90%.
 - **CRAP:** with coverage.json + radon, `nexus/` blockers 43 → 4 (all low-coverage `evals/metrics/*`); "max 272" was `99-Archive/` legacy
 - **Mutation:** gate installed (advisory); citation_verifier baseline 10/20 killed
-- **Test-bias:** 14 smoke-only (~9.4/100) — reduced in PR3
+- **Property/fuzz:** hypothesis over the policy regexes + ledger hash-chain (new)
+- **Score bug:** ChromaRetriever out-of-[0,1] relevance scores fixed (cosine + clamp)
+- **BDD:** seed L6/L7 acceptance layer (`features/*.feature`), gherkin-lint clean
 - **Escape-scan:** clean; floor-lowering gate now actually enforced (PR1 fix)
 
 ### Prior audit
