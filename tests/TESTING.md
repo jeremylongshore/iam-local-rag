@@ -37,7 +37,8 @@ sync with the human Thresholds table above and the CI gates.
 ```yaml
 coverage.line: 65
 coverage.branch: 55
-mutation.kill_rate: 0   # advisory baseline — no enforced kill-rate floor yet (see epic local-s9e)
+# advisory baseline — no enforced kill-rate floor yet (see epic local-s9e)
+mutation.kill_rate: 0
 ```
 
 > **⚠ Gate-integrity note (000-docs/009 #3):** `audit-harness crap` returns
