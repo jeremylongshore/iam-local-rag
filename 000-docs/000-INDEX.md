@@ -29,6 +29,10 @@
 
 - `009-TQ-AUDT-testing-quality-field-audit.md` — Specialist field-team testing audit (26 verified findings; remediation epic `local-s9e`)
 
+### AA - After Action & Review (+1)
+
+- `010-AA-AACR-testing-remediation-aar.md` — Testing remediation AAR: all 26 findings closed across 4 PRs (epic `local-s9e`)
+
 ---
 
 ## Chronological Listing
@@ -42,6 +46,7 @@
 - `007-AA-AUDR-architecture-audit.md`
 - `008-AA-AACR-implementation-aar.md`
 - `009-TQ-AUDT-testing-quality-field-audit.md`
+- `010-AA-AACR-testing-remediation-aar.md`
 
 ---
 
@@ -54,7 +59,7 @@
 - **short-description** = 1-4 words, kebab-case
 - **ext** = File extension
 
-**Next Available Sequence:** `010`
+**Next Available Sequence:** `011`
 
 ---
 

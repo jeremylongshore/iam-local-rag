@@ -61,6 +61,22 @@ def test_chroma_retriever_real_scores(tmp_path):
     assert hits[0].source == "a.txt"
     assert hits[0].score >= hits[-1].score
     assert hits[0].content_hash and hits[0].chunk_id
+    # Every score must stay in [0, 1] — the contract the CitationVerifier's
+    # evidence floor depends on (000-docs/009 #14). Before the cosine+clamp fix
+    # the L2 default emitted a real -1.83 here (with a langchain range warning).
+    assert all(0.0 <= h.score <= 1.0 for h in hits), [h.score for h in hits]
+
+
+def test_chroma_scores_never_negative_even_for_unrelated(tmp_path):
+    # A query orthogonal to every doc must not produce a negative relevance score
+    # that would corrupt the evidence-floor comparison.
+    retr = ChromaRetriever(_KeywordEmbed(), str(tmp_path / "chroma"))
+    retr.index(
+        [Document(page_content="A cat chased a dog", metadata={"source": "b.txt"})]
+    )
+    hits = retr.retrieve("paris tower france", k=1)  # zero vocab overlap
+    assert hits
+    assert 0.0 <= hits[0].score <= 1.0
 
 
 def test_chroma_retriever_locality_follows_embed_provider(tmp_path):

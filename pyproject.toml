@@ -50,6 +50,8 @@ dev = [
     "intent-audit-harness>=1.2.3",
     "radon>=6.0",
     "mutmut>=2.4,<3",
+    "hypothesis>=6.100",
+    "pytest-bdd>=7.0",
 ]
 
 [project.urls]

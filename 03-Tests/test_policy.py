@@ -241,7 +241,10 @@ class TestEnforceAndReceipt:
         assert receipt["destination"] == "cloud"
         assert receipt["provider"] == "anthropic"
         assert receipt["chars_out"] == len("hello world")
-        assert receipt["tokens_out_estimate"] >= 1
+        # Exact, not just >= 1 (009 #21): the estimator is max(1, chars // 4), so
+        # "hello world" (11 chars) -> 2. A mutation like `// 40` or `* 4` changes
+        # this; `>= 1` would not catch it.
+        assert receipt["tokens_out_estimate"] == max(1, len("hello world") // 4)
 
     def test_get_policy_summary(self):
         engine = PolicyEngine(mode="hybrid", hybrid_safe_mode=True, max_snippet_length=2000)
