@@ -1,3 +1,14 @@
+# Release v1.1.9
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.8
+
+- chore: release v1.1.9 [skip ci] (dd447ad)
+- test(ci-hygiene): lazy ledger, blocking mocked API tests, CLI + integration fixes (PR3/4) (#14) (d51b352)
+
+---
+
 # Release v1.1.8
 
 **Release Date**: 2026-07-05
