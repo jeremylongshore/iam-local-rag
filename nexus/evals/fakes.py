@@ -123,9 +123,6 @@ def build_eval_pipeline(
     min_retrieval_score: float = 0.0,
 ):
     """Build a real RAGPipeline wired with the case's docs + a scripted LLM."""
-    from ..core.policy import PolicyEngine
-    from ..core.rag_pipeline import RAGPipeline
-
     # Isolate eval runs from the production audit ledger — build the temp ledger
     # FIRST and inject it, so the pipeline never opens the default ./nexus_ledger.db
     # at construction (which it would if we swapped pipe.ledger only afterwards).
@@ -133,6 +130,8 @@ def build_eval_pipeline(
     import tempfile
 
     from ..core.ledger import RunLedger
+    from ..core.policy import PolicyEngine
+    from ..core.rag_pipeline import RAGPipeline
 
     eval_ledger = RunLedger(os.path.join(tempfile.gettempdir(), "nexus_eval_ledger.db"))
     pipe = RAGPipeline(

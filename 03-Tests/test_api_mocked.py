@@ -8,10 +8,10 @@ regression (routing, a 500 handler, the ledger dependency) could not fail a buil
 The happy-path index/query semantics (real embeddings + generation) stay in the
 integration suite; here we prove the plumbing.
 """
+from conftest import FakePipeline
+
 import nexus.api.server as server
 from nexus.core.config import Config
-
-from conftest import FakePipeline
 
 
 def test_root_lists_endpoints(mocked_api):
