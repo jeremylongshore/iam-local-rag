@@ -141,3 +141,126 @@ def test_providers_exit_nonzero_on_invalid_config(monkeypatch):
         ),
     )
     assert cli.main(["providers"]) == 1
+
+
+# --------------------------------------------------------------------------- #
+# cmd_ask — the primary user-facing command (009 #18). Patches RAGPipeline at its
+# source module so no Ollama / real pipeline is built.
+# --------------------------------------------------------------------------- #
+def _fake_query_response(answer="the answer", citations=None):
+    from datetime import datetime
+
+    from nexus.core.models import PrivacyReceipt, QueryResponse
+
+    return QueryResponse(
+        question="q",
+        answer=answer,
+        citations=citations or [],
+        workspace_id="default",
+        model_used="fake-model",
+        provider="FakeProvider",
+        latency_ms=1.0,
+        run_id="run-1",
+        timestamp=datetime(2026, 1, 1),
+        privacy_receipt=PrivacyReceipt(mode="local", llm_provider="ollama", embed_provider="ollama"),
+    )
+
+
+def _patch_ask_pipeline(monkeypatch, query_impl):
+    class _FakeAskPipeline:
+        def __init__(self, *a, **k):
+            pass
+
+        def query(self, request):
+            return query_impl(request)
+
+    monkeypatch.setattr("nexus.core.rag_pipeline.RAGPipeline", _FakeAskPipeline)
+
+
+def test_cmd_ask_success_prints_answer_sources_and_receipt(monkeypatch, capsys):
+    from nexus.core.models import Citation
+
+    cite = Citation(source="doc.txt", excerpt="x", relevance_score=0.9, content_hash="h")
+    _patch_ask_pipeline(monkeypatch, lambda req: _fake_query_response("ML is a subset of AI", [cite]))
+    rc = cli.main(["ask", "what is ML?"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ML is a subset of AI" in out
+    assert "doc.txt" in out
+    assert "privacy receipt" in out
+
+
+def test_cmd_ask_policy_violation_exits_3(monkeypatch, capsys):
+    from nexus.core.policy import PolicyDecision, PolicyViolation
+
+    def raise_pv(req):
+        decision = PolicyDecision(
+            allowed=False, mode="hybrid", kind="llm", provider="anthropic",
+            is_local=False, char_count=1, token_estimate=1, reason="secret in payload",
+        )
+        raise PolicyViolation(decision)
+
+    _patch_ask_pipeline(monkeypatch, raise_pv)
+    rc = cli.main(["ask", "q"])
+    assert rc == 3
+    assert "blocked by policy" in capsys.readouterr().err
+
+
+def test_cmd_ask_value_error_exits_2(monkeypatch, capsys):
+    def raise_ve(req):
+        raise ValueError("no documents indexed")
+
+    _patch_ask_pipeline(monkeypatch, raise_ve)
+    rc = cli.main(["ask", "q"])
+    assert rc == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_cmd_ask_json_output(monkeypatch, capsys):
+    import json
+
+    _patch_ask_pipeline(monkeypatch, lambda req: _fake_query_response("A"))
+    rc = cli.main(["ask", "q", "--json"])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["answer"] == "A"
+
+
+# --------------------------------------------------------------------------- #
+# cmd_audit — `nexus audit verify` / `nexus audit runs` (009 #18).
+# --------------------------------------------------------------------------- #
+def test_cmd_audit_verify_ok_on_empty_ledger(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(Config, "LEDGER_DB_PATH", str(tmp_path / "l.db"))
+    rc = cli.main(["audit", "verify"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "OK" in out
+
+
+def test_cmd_audit_verify_broken_exits_1(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(Config, "LEDGER_DB_PATH", str(tmp_path / "l.db"))
+    from nexus.core.ledger import RunLedger
+
+    monkeypatch.setattr(
+        RunLedger, "verify_chain", lambda self: {"ok": False, "total": 3, "breaks": [2]}
+    )
+    rc = cli.main(["audit", "verify"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "BROKEN" in out
+
+
+def test_cmd_audit_runs_lists_counts(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(Config, "LEDGER_DB_PATH", str(tmp_path / "l.db"))
+    rc = cli.main(["audit", "runs"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "index runs:" in out and "query runs:" in out
+
+
+def test_cmd_audit_verify_json(monkeypatch, tmp_path, capsys):
+    import json
+
+    monkeypatch.setattr(Config, "LEDGER_DB_PATH", str(tmp_path / "l.db"))
+    rc = cli.main(["audit", "verify", "--json"])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True

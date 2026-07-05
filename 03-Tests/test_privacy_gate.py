@@ -244,6 +244,11 @@ def test_refuses_when_evidence_below_floor(tmp_config, monkeypatch):
     assert resp.answer == INSUFFICIENT_EVIDENCE_ANSWER
     assert resp.citations == []
     assert llm.calls == 0  # no generation on refusal
+    # Invariant #4 holds on the refusal branch too (009 #22): a receipt is still
+    # emitted, marked local + policy-passing, with nothing sent to cloud.
+    assert resp.privacy_receipt is not None
+    assert resp.privacy_receipt.policy_pass is True
+    assert resp.privacy_receipt.chars_sent_to_cloud == 0
 
 
 def test_cites_when_evidence_above_floor(tmp_config):

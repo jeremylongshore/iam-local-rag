@@ -189,28 +189,41 @@ class TestRAGPipelineIntegration:
         assert len(runs["index_runs"]) >= 1
         assert len(runs["query_runs"]) >= 1
 
-    def test_policy_redaction_in_query(self, pipeline, sample_documents):
-        """Test policy redactor is applied during query"""
-        # Index documents
-        index_request = IndexRequest(
-            paths=sample_documents,
-            workspace_id="test_workspace"
+    def test_policy_redaction_in_query(self, pipeline, temp_dirs):
+        """The redaction path actually runs during a query (009 #13).
+
+        Was mutation-insensitive: it planted no PII and asserted only the
+        downstream 200-char citation cap, so the entire PolicyEngine redaction
+        path could be deleted and this test stayed green. Now it indexes a doc
+        containing an email and asserts the per-query privacy receipt reports the
+        email redaction — i.e. the PII was stripped from the outbound context.
+        """
+        pipeline.verifier.min_score = 0.0  # don't refuse the single retrieved chunk
+
+        doc_path = os.path.join(temp_dirs["docs_dir"], "pii.txt")
+        with open(doc_path, "w") as f:
+            f.write(
+                "Contact the machine learning project lead jane.doe@example.com "
+                "for details about the deep learning roadmap."
+            )
+        pipeline.index_documents(
+            IndexRequest(paths=[doc_path], workspace_id="test_workspace")
         )
-        pipeline.index_documents(index_request)
 
-        # Query
-        query_request = QueryRequest(
-            question="What is AI?",
-            workspace_id="test_workspace"
+        response = pipeline.query(
+            QueryRequest(
+                question="Who leads the machine learning project?",
+                workspace_id="test_workspace",
+            )
         )
-        query_response = pipeline.query(query_request)
 
-        # Citations should be truncated to 200 chars
-        for citation in query_response.citations:
-            assert len(citation.excerpt) <= 200
-
-        # Answer should exist
-        assert len(query_response.answer) > 0
+        receipt = response.privacy_receipt
+        assert receipt is not None
+        redacted_kinds = {r["kind"] for r in receipt.redactions}
+        assert "email" in redacted_kinds, (
+            f"redaction path did not run; receipt.redactions={receipt.redactions}"
+        )
+        assert len(response.answer) > 0
 
     def test_workspace_isolation(self, temp_dirs):
         """Test different workspaces are isolated"""
@@ -304,17 +317,28 @@ class TestHybridSafetyIntegration:
             workspace_id="test"
         ))
 
-        # Query
-        response = pipeline.query(QueryRequest(
-            question="What is this?",
-            workspace_id="test"
-        ))
+        # The MAX_SNIPPET_LENGTH cap applies to the context SENT to the model
+        # (bundle.safe_context), NOT the returned citations — the old test asserted
+        # only the unrelated 200-char citation cap and so never exercised capping.
+        # Assert the real snippet cap on the prepared context (009 #13).
+        from nexus.core.models import Citation
 
-        # Citations should be truncated
-        for citation in response.citations:
-            # MAX_SNIPPET_LENGTH + "..." + source attribution
-            # Response citations are already truncated to 200 chars
-            assert len(citation.excerpt) <= 200
+        retrieved = pipeline.retriever.retrieve("What is this?", k=5)
+        assert retrieved, "expected the long document to be retrieved"
+        citations = [
+            Citation(
+                source=c.source,
+                excerpt=c.content,
+                relevance_score=c.score,
+                content_hash=c.content_hash,
+            )
+            for c in retrieved
+        ]
+        bundle = pipeline.policy.prepare_context(citations)
+
+        # With MAX_SNIPPET_LENGTH=100 against a 1000-char run, every snippet is cut.
+        assert "..." in bundle.safe_context  # truncation marker present
+        assert "A" * 200 not in bundle.safe_context  # no snippet keeps its full length
 
         # Restore config
         Config.CHROMA_DB_PATH = original_chroma
