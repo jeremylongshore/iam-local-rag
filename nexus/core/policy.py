@@ -111,6 +111,20 @@ class PolicyEngine:
         "credit_card": r"\b\d{13,19}\b",
     }
 
+    # High-signal prompt-injection phrases in UNTRUSTED context — neutralized
+    # (not blocked) before the context reaches the model, so a weak model is far
+    # less likely to obey injected instructions. Defense-in-depth atop the
+    # untrusted-data prompt boundary.
+    _INJECTION_PATTERNS = [
+        r"(?i)\bignore\s+(?:all\s+|any\s+)?(?:the\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|prompts?|directions?|messages?)",
+        r"(?i)\bdisregard\s+(?:all\s+|the\s+|any\s+)?(?:previous|prior|above|earlier|foregoing|preceding)\b[^.\n]*",
+        r"(?i)\bforget\s+(?:everything|all\s+(?:previous|prior)|your\s+(?:previous\s+)?instructions?)\b[^.\n]*",
+        r"(?i)\byou\s+are\s+now\s+(?:a|an|the)\b[^.\n]*",
+        r"(?i)\bnew\s+instructions?\s*:[^.\n]*",
+        r"(?i)\boverride\s+(?:the\s+)?(?:system|previous|above|earlier)\b[^.\n]*",
+        r"(?i)\b(?:reply|respond|answer|say)\s+(?:only\s+)?with\s+(?:the\s+word\s+)?[^.\n]*",
+    ]
+
     def __init__(
         self,
         mode=None,
@@ -126,6 +140,7 @@ class PolicyEngine:
         )
         self._secret_res = {k: re.compile(v) for k, v in self._SECRET_PATTERNS.items()}
         self._pii_res = {k: re.compile(v) for k, v in self._PII_PATTERNS.items()}
+        self._injection_res = [re.compile(p) for p in self._INJECTION_PATTERNS]
 
     # --- helpers ---
 
@@ -144,6 +159,14 @@ class PolicyEngine:
             if n:
                 redactions.append(Redaction(kind=name, count=n))
         return text, redactions
+
+    def scrub_injection(self, text: str) -> Tuple[str, int]:
+        """Neutralize imperative prompt-injection phrases in untrusted context."""
+        count = 0
+        for rx in self._injection_res:
+            text, n = rx.subn("[flagged: possible prompt injection removed]", text)
+            count += n
+        return text, count
 
     def prepare_context(self, citations: List[Citation]) -> ContextBundle:
         """
@@ -165,6 +188,10 @@ class PolicyEngine:
             red_excerpt, reds = self.redact_pii(excerpt)
             for r in reds:
                 totals[r.kind] = totals.get(r.kind, 0) + r.count
+
+            red_excerpt, inj_n = self.scrub_injection(red_excerpt)
+            if inj_n:
+                totals["injection"] = totals.get("injection", 0) + inj_n
 
             if self.hybrid_safe_mode and len(red_excerpt) > self.max_snippet_length:
                 red_excerpt = red_excerpt[: self.max_snippet_length] + "..."
