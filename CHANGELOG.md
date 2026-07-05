@@ -1,3 +1,14 @@
+# Release v1.1.6
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.5
+
+- chore: release v1.1.6 [skip ci] (1f3f4ba)
+- P7: reposition docs + implementation AAR (P0-P6) (#11) (da016cf)
+
+---
+
 # Release v1.1.5
 
 **Release Date**: 2026-07-05
