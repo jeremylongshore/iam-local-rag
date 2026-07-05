@@ -1,3 +1,14 @@
+# Release v1.1.8
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.7
+
+- chore: release v1.1.8 [skip ci] (2af5dc3)
+- test(moat): cover every secret/PII pattern + provider adapters + ABC contract (PR2/4) (#13) (74241e1)
+
+---
+
 # Release v1.1.7
 
 **Release Date**: 2026-07-05
