@@ -1,3 +1,14 @@
+# Release v1.1.7
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.6
+
+- chore: release v1.1.7 [skip ci] (98a04d8)
+- test(gates): make the quality gates real — mutation, truthful CRAP, coverage ratchet (PR1/4) (#12) (3489da7)
+
+---
+
 # Release v1.1.6
 
 **Release Date**: 2026-07-05
