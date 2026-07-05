@@ -74,7 +74,23 @@ async def require_api_key(
 _pipelines = {}  # workspace_id -> RAGPipeline
 _start_time = time.time()
 _query_count = 0
-_ledger = RunLedger()  # Global ledger instance
+
+# Lazy, overridable ledger — deliberately NOT constructed at import time.
+# RunLedger.__init__ eagerly mkdir's and opens a SQLite file at
+# Config.LEDGER_DB_PATH (default the repo-relative ./nexus_ledger.db), so a
+# module-level `_ledger = RunLedger()` created a real DB just by importing the
+# server — and any test that never overrode it read/wrote that on-disk ledger
+# (000-docs/009 #9). Building it lazily on first request keeps import
+# side-effect-free; tests override via app.dependency_overrides[get_ledger].
+_ledger_singleton = None
+
+
+def get_ledger() -> RunLedger:
+    """Return the process ledger, constructing it on first use (never at import)."""
+    global _ledger_singleton
+    if _ledger_singleton is None:
+        _ledger_singleton = RunLedger()
+    return _ledger_singleton
 
 
 def get_pipeline(workspace_id: str = "default") -> RAGPipeline:
@@ -150,7 +166,7 @@ async def index_documents(request: IndexRequest):
 
 
 @app.get("/workspaces", dependencies=[Depends(require_api_key)])
-async def list_workspaces():
+async def list_workspaces(ledger: RunLedger = Depends(get_ledger)):
     """
     List all active workspaces.
 
@@ -168,7 +184,7 @@ async def list_workspaces():
             workspace_path = os.path.join(chroma_base, workspace_id)
             if os.path.isdir(workspace_path):
                 # Get stats from ledger
-                stats = _ledger.get_workspace_stats(workspace_id)
+                stats = ledger.get_workspace_stats(workspace_id)
                 workspaces.append({
                     "workspace_id": workspace_id,
                     "stats": stats
@@ -221,7 +237,8 @@ async def create_workspace(workspace_id: str):
 async def list_runs(
     workspace_id: str = None,
     run_type: str = "all",
-    limit: int = 100
+    limit: int = 100,
+    ledger: RunLedger = Depends(get_ledger),
 ):
     """
     List runs from the ledger.
@@ -235,7 +252,7 @@ async def list_runs(
         Dict with index_runs and query_runs lists
     """
     try:
-        runs = _ledger.list_runs(
+        runs = ledger.list_runs(
             workspace_id=workspace_id,
             run_type=run_type,
             limit=limit
@@ -246,7 +263,7 @@ async def list_runs(
 
 
 @app.get("/runs/{run_id}", dependencies=[Depends(require_api_key)])
-async def get_run(run_id: str):
+async def get_run(run_id: str, ledger: RunLedger = Depends(get_ledger)):
     """
     Get details for a specific run.
 
@@ -256,16 +273,16 @@ async def get_run(run_id: str):
     Returns:
         Run details or 404
     """
-    run = _ledger.get_run(run_id)
+    run = ledger.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
 
 
 @app.get("/audit/verify", dependencies=[Depends(require_api_key)])
-async def audit_verify():
+async def audit_verify(ledger: RunLedger = Depends(get_ledger)):
     """Verify the tamper-evident audit hash-chain. Returns {ok, total, breaks}."""
-    return _ledger.verify_chain()
+    return ledger.verify_chain()
 
 
 @app.get("/")

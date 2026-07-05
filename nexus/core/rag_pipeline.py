@@ -79,6 +79,7 @@ class RAGPipeline:
         embed_provider: Optional[EmbeddingProvider] = None,
         workspace_id: str = "default",
         retriever: Optional[Retriever] = None,
+        ledger: Optional["RunLedger"] = None,
     ):
         self.workspace_id = _safe_workspace_id(workspace_id)
 
@@ -94,7 +95,9 @@ class RAGPipeline:
             self.embed_provider = embed_provider
 
         self.policy = PolicyEngine()
-        self.ledger = RunLedger()
+        # Injectable so callers (evals, tests) can isolate their audit trail from
+        # the default on-disk ledger instead of opening it and swapping after.
+        self.ledger = ledger if ledger is not None else RunLedger()
 
         self.workspace_dir = f"{Config.CHROMA_DB_PATH}/{workspace_id}"
         self.chroma_path = self.workspace_dir  # Chroma persists here

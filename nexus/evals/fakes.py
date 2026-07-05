@@ -123,22 +123,24 @@ def build_eval_pipeline(
     min_retrieval_score: float = 0.0,
 ):
     """Build a real RAGPipeline wired with the case's docs + a scripted LLM."""
+    # Isolate eval runs from the production audit ledger — build the temp ledger
+    # FIRST and inject it, so the pipeline never opens the default ./nexus_ledger.db
+    # at construction (which it would if we swapped pipe.ledger only afterwards).
+    import os
+    import tempfile
+
+    from ..core.ledger import RunLedger
     from ..core.policy import PolicyEngine
     from ..core.rag_pipeline import RAGPipeline
 
+    eval_ledger = RunLedger(os.path.join(tempfile.gettempdir(), "nexus_eval_ledger.db"))
     pipe = RAGPipeline(
         llm_provider=FakeLLM(answer=case.scripted_answer, is_local=llm_is_local, label=llm_label),
         embed_provider=FakeEmbed(),
         workspace_id="eval",
         retriever=KeywordRetriever(case.docs, is_local=True),
+        ledger=eval_ledger,
     )
     pipe.policy = PolicyEngine(mode=mode)
     pipe.verifier.min_score = min_retrieval_score
-    # Isolate eval runs from the production audit ledger.
-    import os
-    import tempfile
-
-    from ..core.ledger import RunLedger
-
-    pipe.ledger = RunLedger(os.path.join(tempfile.gettempdir(), "nexus_eval_ledger.db"))
     return pipe

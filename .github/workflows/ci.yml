@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev,ui]'
       - name: Unit tests (no external services)
-        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=75
+        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=78
 
   mutation:
     # L3 mutation testing (assertion-strength gate). ADVISORY baseline — the
