@@ -5,11 +5,15 @@ The primary interface for a local-first tool: index your docs, ask questions,
 preview the policy, run evals, and verify the audit chain — all policy-gated and
 receipted, no server required.
 
-Safety by design (the CLI is safe for an agent to drive):
+Safety by design (defense-in-depth; a read-mostly data-plane tool):
 - Read-mostly verbs; no destructive commands; no arbitrary shell (argparse only).
-- `nexus index` is PATH-CONFINED to an allowlisted root (default: cwd) so an
-  agent cannot be steered into indexing e.g. /etc/shadow and exfiltrating it via
-  a later cloud query. Override with --allow-root or NEXUS_ALLOWED_INDEX_ROOTS.
+- `nexus index` is PATH-CONFINED to an allowlisted root (default: cwd). This
+  guards the confused-deputy case where injected DOCUMENT content steers indexing
+  toward sensitive files (e.g. /etc/shadow) for later exfiltration via a cloud
+  query. IMPORTANT: `--allow-root` and NEXUS_ALLOWED_INDEX_ROOTS are OPERATOR
+  controls on a TRUSTED channel — an agent that fully controls the argv/env can
+  widen the root, so any MCP/tool wrapper MUST expose only `paths` (never
+  --allow-root or the env override) to preserve the guarantee.
 - Every command runs through the same PolicyEngine gate + tamper-evident ledger.
 """
 from __future__ import annotations
@@ -35,7 +39,9 @@ def confine_paths(paths: List[str], roots: List[str]) -> List[str]:
     confined: List[str] = []
     for p in paths:
         rp = os.path.realpath(p)
-        if not any(rp == root or rp.startswith(root + os.sep) for root in roots):
+        # os.path.join(root, "") normalizes the trailing separator so a root of
+        # "/" (which would make root+os.sep "//") still matches its children.
+        if not any(rp == root or rp.startswith(os.path.join(root, "")) for root in roots):
             raise ValueError(
                 f"refusing to index {p!r}: outside allowed roots {roots}. "
                 f"Extend with --allow-root or NEXUS_ALLOWED_INDEX_ROOTS."
@@ -48,14 +54,16 @@ def confine_paths(paths: List[str], roots: List[str]) -> List[str]:
 # Commands
 # --------------------------------------------------------------------------- #
 def cmd_index(args) -> int:
-    from .core.models import IndexRequest
-    from .core.rag_pipeline import RAGPipeline
-
+    # Confine BEFORE importing the pipeline, so the guardrail runs even if the
+    # heavy import were to fail.
     try:
         paths = confine_paths(args.paths, _allowed_roots(args.allow_root))
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+    from .core.models import IndexRequest
+    from .core.rag_pipeline import RAGPipeline
 
     pipe = RAGPipeline(workspace_id=args.workspace)
     result = pipe.index_documents(IndexRequest(paths=paths, workspace_id=args.workspace))
@@ -143,7 +151,9 @@ def cmd_providers(args) -> int:
             print(f"  warn: {w}")
         for e in results.get("errors", []):
             print(f"  error: {e}")
-    return 0
+    # Non-zero on genuine misconfiguration (errors); a merely-unavailable local
+    # provider is a warning, not a failure.
+    return 0 if results.get("valid", True) else 1
 
 
 def cmd_config(args) -> int:
@@ -157,7 +167,12 @@ def cmd_config(args) -> int:
 def cmd_eval(args) -> int:
     from .evals.run import main as eval_main
 
-    return eval_main(["--live"] if args.live else [])
+    argv = []
+    if args.live:
+        argv.append("--live")
+    if args.json:
+        argv.append("--json")
+    return eval_main(argv)
 
 
 def cmd_audit(args) -> int:

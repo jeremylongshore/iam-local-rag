@@ -100,3 +100,44 @@ def test_ask_empty_workspace_exits_cleanly(monkeypatch, tmp_path):
     monkeypatch.setattr(Config, "LEDGER_DB_PATH", str(tmp_path / "l.db"))
     rc = cli.main(["ask", "anything?", "--workspace", "empty"])
     assert rc == 2
+
+
+def test_confine_paths_root_slash_allows_children():
+    # A root of "/" must allow any absolute path, not reject everything.
+    assert cli.confine_paths(["/etc/hosts"], ["/"]) == ["/etc/hosts"]
+
+
+def test_eval_forwards_json_and_live(monkeypatch):
+    import nexus.evals.run as run
+
+    captured = {}
+
+    def fake_main(argv=None):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(run, "main", fake_main)
+    cli.main(["eval", "--json"])
+    assert "--json" in captured["argv"]
+    cli.main(["eval", "--live", "--json"])
+    assert set(captured["argv"]) == {"--live", "--json"}
+
+
+def test_providers_exit_nonzero_on_invalid_config(monkeypatch):
+    from nexus.core.router import ProviderRouter
+
+    monkeypatch.setattr(
+        ProviderRouter,
+        "validate_configuration",
+        staticmethod(
+            lambda: {
+                "valid": False,
+                "mode": "hybrid",
+                "llm_provider": "anthropic",
+                "embed_provider": "ollama",
+                "errors": ["ANTHROPIC_API_KEY required"],
+                "warnings": [],
+            }
+        ),
+    )
+    assert cli.main(["providers"]) == 1
