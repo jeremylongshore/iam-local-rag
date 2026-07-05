@@ -1,3 +1,14 @@
+# Release v1.1.4
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.3
+
+- chore: release v1.1.4 [skip ci] (d289b66)
+- P5: nexus/evals harness + P4b prompt-injection hardening (#9) (5542829)
+
+---
+
 # Release v1.1.3
 
 **Release Date**: 2026-07-04
