@@ -208,7 +208,8 @@ class TestOpenAIProvider:
 
     def test_embed_documents_and_query(self, monkeypatch):
         def emb(**kwargs):
-            n = len(kwargs["input"])
+            inp = kwargs["input"]
+            n = 1 if isinstance(inp, str) else len(inp)  # API accepts str or list
             return types.SimpleNamespace(
                 data=[types.SimpleNamespace(embedding=[0.1, 0.2, 0.3]) for _ in range(n)]
             )

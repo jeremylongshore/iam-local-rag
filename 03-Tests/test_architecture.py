@@ -25,11 +25,15 @@ ALLOWLIST_FILE_SUFFIXES = (
 )
 # Any file under these dirs is allowed (the adapters implement the methods and
 # self-delegate: generate() -> generate_with_messages(); embed_query() -> embed_documents()).
-ALLOWLIST_DIR_FRAGMENTS = ("/nexus/core/providers/",)
+# NOTE: matched against the repo-RELATIVE path, never the absolute one — an
+# absolute match would allowlist everything if the repo were cloned under a path
+# that itself contains "nexus/core/providers/", silently voiding the guard.
+ALLOWLIST_DIR_FRAGMENTS = ("nexus/core/providers/",)
 
 _NEXUS_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nexus"
 )
+_REPO_ROOT = os.path.dirname(_NEXUS_ROOT)
 
 
 def _nexus_py_files():
@@ -39,8 +43,8 @@ def _nexus_py_files():
                 yield os.path.join(dirpath, f)
 
 
-def _is_allowed(path):
-    norm = path.replace(os.sep, "/")
+def _is_allowed(rel_path):
+    norm = rel_path.replace(os.sep, "/")
     if any(norm.endswith(s) for s in ALLOWLIST_FILE_SUFFIXES):
         return True
     return any(frag in norm for frag in ALLOWLIST_DIR_FRAGMENTS)
@@ -49,7 +53,8 @@ def _is_allowed(path):
 def test_no_ungated_outbound_provider_calls():
     offenders = []
     for path in _nexus_py_files():
-        if _is_allowed(path):
+        rel_path = os.path.relpath(path, _REPO_ROOT)
+        if _is_allowed(rel_path):
             continue
         with open(path, encoding="utf-8") as fh:
             tree = ast.parse(fh.read(), filename=path)
@@ -59,10 +64,7 @@ def test_no_ungated_outbound_provider_calls():
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr in OUTBOUND_METHODS
             ):
-                offenders.append(
-                    f"{os.path.relpath(path, os.path.dirname(_NEXUS_ROOT))}:{node.lineno} "
-                    f".{node.func.attr}()"
-                )
+                offenders.append(f"{rel_path}:{node.lineno} .{node.func.attr}()")
 
     assert not offenders, (
         "Outbound provider call(s) found outside the single policy gate. Invariant #1 "
