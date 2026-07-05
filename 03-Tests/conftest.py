@@ -55,6 +55,7 @@ def mocked_api(tmp_path, monkeypatch):
     test_ledger = RunLedger(str(tmp_path / "ledger.db"))
     app.dependency_overrides[get_ledger] = lambda: test_ledger
     server._pipelines.clear()
+    server._ledger_singleton = None  # drop any real ledger a prior test may have built
     monkeypatch.setattr(
         server,
         "get_pipeline",
@@ -65,3 +66,4 @@ def mocked_api(tmp_path, monkeypatch):
 
     app.dependency_overrides.clear()
     server._pipelines.clear()
+    server._ledger_singleton = None

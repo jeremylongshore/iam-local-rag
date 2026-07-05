@@ -35,12 +35,14 @@ class TestNexusAPI:
         Config.LEDGER_DB_PATH = ledger_path
 
         server._pipelines.clear()
+        server._ledger_singleton = None  # drop any real ledger a prior test may have built
         test_ledger = RunLedger(ledger_path)
         app.dependency_overrides[get_ledger] = lambda: test_ledger
 
         yield TestClient(app)
 
         server._pipelines.clear()
+        server._ledger_singleton = None
         app.dependency_overrides.clear()
         Config.CHROMA_DB_PATH = original_chroma
         Config.LEDGER_DB_PATH = original_ledger
