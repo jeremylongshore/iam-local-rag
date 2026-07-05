@@ -1,3 +1,14 @@
+# Release v1.1.10
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.9
+
+- chore: release v1.1.10 [skip ci] (d16a878)
+- test(moat): fix out-of-[0,1] score bug, add property/fuzz tests, PDF ingestion, seed BDD layer (#15) (8313b45)
+
+---
+
 # Release v1.1.9
 
 **Release Date**: 2026-07-05
