@@ -61,8 +61,8 @@ ollama pull qwen2.5:0.5b        # generation (~400MB)
 ollama pull nomic-embed-text    # embeddings  (~274MB)
 export NEXUS_MODE=local OLLAMA_MODEL=qwen2.5:0.5b OLLAMA_EMBED_MODEL=nomic-embed-text
 
-nexus index ./docs/*.md                 # index (path-confined to cwd)
-nexus ask "What does X do?"             # grounded answer + sources + privacy receipt
+nexus index 000-docs/*.md               # index your documents (path-confined to cwd)
+nexus ask "What does NEXUS enforce?"    # grounded answer + sources + privacy receipt
 nexus policy "email a@b.com key sk-..."  # preview redactions/secret-block — sends nothing
 nexus providers                          # provider config + availability
 nexus eval                               # run the offline eval suite

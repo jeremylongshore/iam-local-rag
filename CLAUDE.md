@@ -56,8 +56,8 @@ nexus/
 **Documentation lives in `000-docs/`.** There is no `.directory-standards.md`
 and no `claudes-docs/`; the old `01-Docs/` is archived. New docs follow
 `NNN-CC-ABCD-description.md`. Start at `000-docs/000-INDEX.md`, the audit
-`007-AA-AUDR-architecture-audit.md`, and the implementation AAR
-`008-AA-AACR-implementation-aar.md`.
+`000-docs/007-AA-AUDR-architecture-audit.md`, and the implementation AAR
+`000-docs/008-AA-AACR-implementation-aar.md`.
 
 ## Technology stack
 
