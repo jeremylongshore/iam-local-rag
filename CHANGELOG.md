@@ -1,3 +1,14 @@
+# Release v1.1.5
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.4
+
+- chore: release v1.1.5 [skip ci] (e2a118a)
+- P6 (part 1): the nexus CLI (index/ask/policy/eval/audit) with agent-safe guardrails (#10) (6852cbb)
+
+---
+
 # Release v1.1.4
 
 **Release Date**: 2026-07-05
