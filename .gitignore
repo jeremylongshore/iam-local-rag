@@ -38,8 +38,14 @@ index_metadata.json
 
 # Test coverage
 .coverage
+coverage.json
 htmlcov/
 .pytest_cache/
+reports/
+
+# Mutation testing (mutmut)
+.mutmut-cache
+*.bak
 
 # IDE
 .vscode/
