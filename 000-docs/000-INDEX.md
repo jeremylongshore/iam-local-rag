@@ -25,6 +25,10 @@
 - `007-AA-AUDR-architecture-audit.md` — Baseline architecture audit for the local-first BYOK refactor (epic `local-6p0`)
 - `008-AA-AACR-implementation-aar.md` — Implementation AAR: what was built P0–P6, process, residual risks, competitive review
 
+### TQ - Testing & Quality (1 document)
+
+- `009-TQ-AUDT-testing-quality-field-audit.md` — Specialist field-team testing audit (26 verified findings; remediation epic `local-s9e`)
+
 ---
 
 ## Chronological Listing
@@ -37,6 +41,7 @@
 - `006-AA-REPT-nexus-hybrid-cloud-team-upgrade.md`
 - `007-AA-AUDR-architecture-audit.md`
 - `008-AA-AACR-implementation-aar.md`
+- `009-TQ-AUDT-testing-quality-field-audit.md`
 
 ---
 
@@ -49,7 +54,7 @@
 - **short-description** = 1-4 words, kebab-case
 - **ext** = File extension
 
-**Next Available Sequence:** `009`
+**Next Available Sequence:** `010`
 
 ---
 

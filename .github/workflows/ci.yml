@@ -41,7 +41,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev,ui]'
       - name: Unit tests (no external services)
-        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=55
+        run: pytest -m "not integration" -v --cov=nexus --cov-report=term-missing --cov-fail-under=65
+
+  mutation:
+    # L3 mutation testing (assertion-strength gate). ADVISORY baseline — the
+    # kill-rate floor lives in tests/TESTING.md; promote to blocking once the
+    # moat modules clear it (epic local-s9e / 000-docs/009-TQ-AUDT). Scope is
+    # pinned in setup.cfg [mutmut]; CI is non-TTY so mutmut skips the spinner.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install package + dev
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Mutation run (moat modules; survivors do not block)
+        run: mutmut run || true
+      - name: Mutation results
+        run: mutmut results
 
   harness:
     # Intent Solutions audit harness (in-repo enforcement). Advisory for now;
@@ -63,6 +84,13 @@ jobs:
       - name: Harness — test-bias scan (advisory)
         continue-on-error: true
         run: audit-harness bias 03-Tests
+      - name: Harness — CRAP score (advisory; truthful — radon is on PATH here)
+        # radon>=6.0 ships in the [dev] extra installed above, so the CRAP gate
+        # runs for real. NOTE: audit-harness crap FAILS-OPEN (returns pass:true)
+        # if radon is ever absent — an upstream harness bug (000-docs/009 #3);
+        # this job pins radon in-venv so the score is always truthful here.
+        continue-on-error: true
+        run: audit-harness crap
       - name: Harness — escape scan on PR diff (advisory)
         if: github.event_name == 'pull_request'
         continue-on-error: true
