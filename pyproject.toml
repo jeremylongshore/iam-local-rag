@@ -47,7 +47,11 @@ dev = [
     "ruff>=0.6.0",
     "mypy>=1.8.0",
     "pre-commit>=3.5.0",
-    "intent-audit-harness>=1.2.3",
+    # Exact pin on purpose. .harness-hash is built by this version; a newer release
+    # can track more files and turn `audit-harness verify` red on an untouched
+    # branch (1.4.0 did, 2026-09-19). To upgrade: bump here, run
+    # `audit-harness init`, and confirm no already-pinned hash changed.
+    "intent-audit-harness==1.4.0",
     "radon>=6.0",
     "mutmut>=2.4,<3",
     "hypothesis>=6.100",
