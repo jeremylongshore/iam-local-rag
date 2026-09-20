@@ -1,3 +1,14 @@
+# Release v2.0.1
+
+**Release Date**: 2026-09-20
+
+## Changes since v2.0.0
+
+- chore: release v2.0.1 [skip ci] (87c42c2)
+- ci(deps): pin intent-audit-harness to the exact version the hash manifest was built with (#18) (956ac4c)
+
+---
+
 # Release v2.0.0
 
 **Release Date**: 2026-09-19
