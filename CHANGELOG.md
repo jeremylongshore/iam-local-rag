@@ -1,3 +1,14 @@
+# Release v2.0.2
+
+**Release Date**: 2026-09-24
+
+## Changes since v2.0.1
+
+- chore: release v2.0.2 [skip ci] (95a759c)
+- chore(beads): record the July 5 closure of the testing-quality remediation beads (#19) (2e50b96)
+
+---
+
 # Release v2.0.1
 
 **Release Date**: 2026-09-20
