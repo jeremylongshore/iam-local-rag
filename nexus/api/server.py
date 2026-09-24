@@ -2,14 +2,26 @@
 FastAPI server for headless NEXUS RAG operations.
 Provides REST API for querying and indexing.
 """
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import logging
+import secrets
 import time
 
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from ..core.config import Config
-from ..core.models import QueryRequest, QueryResponse, IndexRequest, IndexResult, HealthStatus, PerformanceMetrics
-from ..core.rag_pipeline import RAGPipeline
 from ..core.ledger import RunLedger
+from ..core.models import (
+    HealthStatus,
+    IndexRequest,
+    IndexResult,
+    PerformanceMetrics,
+    QueryRequest,
+    QueryResponse,
+)
+from ..core.rag_pipeline import RAGPipeline
+
+logger = logging.getLogger("nexus.api")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -18,20 +30,67 @@ app = FastAPI(
     version="1.1.0"
 )
 
-# CORS middleware
+# CORS — allowlist from config (NOT wildcard by default; a "*" origin with an
+# API this mutating is a drive-by/CSRF vector). allow_credentials only when the
+# allowlist is explicit (browsers reject "*" + credentials anyway).
+_cors_origins = Config.NEXUS_CORS_ORIGINS
+# Any wildcard in the list is unsafe with credentials, not just an exact ["*"].
+_wildcard_cors = "*" in _cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=not _wildcard_cors,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "X-API-Key", "Content-Type"],
 )
+
+if not Config.NEXUS_API_KEY:
+    logger.warning(
+        "NEXUS_API_KEY is not set — the API is UNAUTHENTICATED. Set NEXUS_API_KEY "
+        "to require a key on /query, /index, /workspaces and /runs."
+    )
+
+
+async def require_api_key(
+    authorization: str = Header(default=None),
+    x_api_key: str = Header(default=None),
+) -> None:
+    """Require the configured API key on protected endpoints (no-op if unset)."""
+    expected = Config.NEXUS_API_KEY
+    if not expected:
+        return  # auth disabled (local dev) — warned at startup
+    presented = x_api_key
+    if not presented and authorization:
+        # Robust to extra/tab whitespace: split on any whitespace and check scheme.
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            presented = parts[1]
+    # Constant-time compare to avoid a byte-by-byte timing oracle; guard the
+    # empty/None case first (compare_digest requires two strings).
+    if not presented or not secrets.compare_digest(presented, expected):
+        raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 # Global state
 _pipelines = {}  # workspace_id -> RAGPipeline
 _start_time = time.time()
 _query_count = 0
-_ledger = RunLedger()  # Global ledger instance
+
+# Lazy, overridable ledger — deliberately NOT constructed at import time.
+# RunLedger.__init__ eagerly mkdir's and opens a SQLite file at
+# Config.LEDGER_DB_PATH (default the repo-relative ./nexus_ledger.db), so a
+# module-level `_ledger = RunLedger()` created a real DB just by importing the
+# server — and any test that never overrode it read/wrote that on-disk ledger
+# (000-docs/009 #9). Building it lazily on first request keeps import
+# side-effect-free; tests override via app.dependency_overrides[get_ledger].
+_ledger_singleton = None
+
+
+def get_ledger() -> RunLedger:
+    """Return the process ledger, constructing it on first use (never at import)."""
+    global _ledger_singleton
+    if _ledger_singleton is None:
+        _ledger_singleton = RunLedger()
+    return _ledger_singleton
 
 
 def get_pipeline(workspace_id: str = "default") -> RAGPipeline:
@@ -53,7 +112,7 @@ async def health_check():
         mode=Config.NEXUS_MODE.value,
         llm_provider=Config.NEXUS_LLM_PROVIDER.value,
         embed_provider=Config.NEXUS_EMBED_PROVIDER.value,
-        vector_store_ready=pipeline._vectorstore is not None,
+        vector_store_ready=pipeline.retriever.exists(),
         documents_indexed=0,  # TODO: track this
         uptime_seconds=time.time() - _start_time,
         metrics=PerformanceMetrics(
@@ -65,7 +124,7 @@ async def health_check():
     )
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(require_api_key)])
 async def query_knowledge_base(request: QueryRequest):
     """
     Query the knowledge base.
@@ -87,7 +146,7 @@ async def query_knowledge_base(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/index", response_model=IndexResult)
+@app.post("/index", response_model=IndexResult, dependencies=[Depends(require_api_key)])
 async def index_documents(request: IndexRequest):
     """
     Index documents into workspace.
@@ -106,8 +165,8 @@ async def index_documents(request: IndexRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/workspaces")
-async def list_workspaces():
+@app.get("/workspaces", dependencies=[Depends(require_api_key)])
+async def list_workspaces(ledger: RunLedger = Depends(get_ledger)):
     """
     List all active workspaces.
 
@@ -115,7 +174,6 @@ async def list_workspaces():
         List of workspace IDs with basic stats
     """
     import os
-    from pathlib import Path
 
     workspaces = []
 
@@ -126,7 +184,7 @@ async def list_workspaces():
             workspace_path = os.path.join(chroma_base, workspace_id)
             if os.path.isdir(workspace_path):
                 # Get stats from ledger
-                stats = _ledger.get_workspace_stats(workspace_id)
+                stats = ledger.get_workspace_stats(workspace_id)
                 workspaces.append({
                     "workspace_id": workspace_id,
                     "stats": stats
@@ -138,7 +196,7 @@ async def list_workspaces():
     }
 
 
-@app.post("/workspaces")
+@app.post("/workspaces", dependencies=[Depends(require_api_key)])
 async def create_workspace(workspace_id: str):
     """
     Create a new workspace.
@@ -152,8 +210,21 @@ async def create_workspace(workspace_id: str):
     if not workspace_id or workspace_id == "":
         raise HTTPException(status_code=400, detail="workspace_id is required")
 
-    # Initialize pipeline for workspace (creates chroma directory)
+    # Validate the slug BEFORE it is ever used as a path component (defense in
+    # depth; the pipeline also validates, but reject early with a clean 400).
+    from ..core.rag_pipeline import _safe_workspace_id
+
+    try:
+        _safe_workspace_id(workspace_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Initialize pipeline for workspace and persist its directory so the
+    # workspace is listable before any documents are indexed.
     pipeline = get_pipeline(workspace_id)
+    import os
+
+    os.makedirs(pipeline.workspace_dir, exist_ok=True)
 
     return {
         "workspace_id": workspace_id,
@@ -162,11 +233,12 @@ async def create_workspace(workspace_id: str):
     }
 
 
-@app.get("/runs")
+@app.get("/runs", dependencies=[Depends(require_api_key)])
 async def list_runs(
     workspace_id: str = None,
     run_type: str = "all",
-    limit: int = 100
+    limit: int = 100,
+    ledger: RunLedger = Depends(get_ledger),
 ):
     """
     List runs from the ledger.
@@ -180,7 +252,7 @@ async def list_runs(
         Dict with index_runs and query_runs lists
     """
     try:
-        runs = _ledger.list_runs(
+        runs = ledger.list_runs(
             workspace_id=workspace_id,
             run_type=run_type,
             limit=limit
@@ -190,8 +262,8 @@ async def list_runs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/runs/{run_id}")
-async def get_run(run_id: str):
+@app.get("/runs/{run_id}", dependencies=[Depends(require_api_key)])
+async def get_run(run_id: str, ledger: RunLedger = Depends(get_ledger)):
     """
     Get details for a specific run.
 
@@ -201,10 +273,16 @@ async def get_run(run_id: str):
     Returns:
         Run details or 404
     """
-    run = _ledger.get_run(run_id)
+    run = ledger.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
+
+
+@app.get("/audit/verify", dependencies=[Depends(require_api_key)])
+async def audit_verify(ledger: RunLedger = Depends(get_ledger)):
+    """Verify the tamper-evident audit hash-chain. Returns {ok, total, breaks}."""
+    return ledger.verify_chain()
 
 
 @app.get("/")

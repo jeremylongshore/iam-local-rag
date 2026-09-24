@@ -1,10 +1,12 @@
 """
 Anthropic Claude provider implementation using official SDK.
 """
-from typing import List, Dict, Optional
 import time
-from .base import LLMProvider
+from typing import Dict, List, Optional
+
 from ..config import Config
+from .base import LLMProvider
+from .profiles import ProviderCapabilities, ProviderCostProfile, ProviderPrivacyProfile
 
 
 class AnthropicLLMProvider(LLMProvider):
@@ -153,9 +155,29 @@ class AnthropicLLMProvider(LLMProvider):
             return False
 
         try:
-            # Try a minimal API call to test availability
-            client = self._get_client()
-            # Just checking if client initializes is enough for basic validation
+            # Constructing the client (lazy import + key check) is enough here;
+            # health_check() does the real network probe.
+            self._get_client()
             return True
         except Exception:
             return False
+
+    def get_privacy_profile(self) -> ProviderPrivacyProfile:
+        return ProviderPrivacyProfile(
+            provider_label="anthropic",
+            is_local=False,
+            sends_data_offhost=True,
+            data_region="anthropic-cloud",
+        )
+
+    def get_cost_profile(self) -> ProviderCostProfile:
+        # Approximate Claude 3.5 Sonnet pricing (USD / 1M tokens).
+        return ProviderCostProfile(input_per_million_usd=3.0, output_per_million_usd=15.0)
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            supports_streaming=True,
+            supports_system_prompt=True,
+            supports_tools=True,
+            max_context_tokens=200000,
+        )

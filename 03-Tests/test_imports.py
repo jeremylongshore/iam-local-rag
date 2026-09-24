@@ -1,17 +1,19 @@
-import importlib.util, pathlib
+"""Smoke test: the nexus package and its core modules import cleanly."""
 
-def test_app_imports():
-    """Test that app.py can be imported without errors."""
-    try:
-        app_path = pathlib.Path("app.py")
-        if not app_path.exists():
-            # Skip if app.py doesn't exist in test environment
-            return
-        spec = importlib.util.spec_from_file_location("app", app_path)
-        mod = importlib.util.module_from_spec(spec)
-        # Don't actually execute - just check it can be loaded
-        assert spec is not None
-        assert mod is not None
-    except Exception:
-        # In CI, heavy deps might not be installed - that's OK for unit tests
-        pass
+
+def test_nexus_package_imports():
+    import nexus  # noqa: F401
+    from nexus.core import (  # noqa: F401
+        config,
+        ledger,
+        models,
+        policy,
+        rag_pipeline,
+        router,
+    )
+
+
+def test_api_app_imports():
+    from nexus.api.server import app
+
+    assert app is not None

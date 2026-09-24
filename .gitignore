@@ -10,6 +10,12 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
 
 # Environment variables (secrets)
 .env
@@ -32,8 +38,14 @@ index_metadata.json
 
 # Test coverage
 .coverage
+coverage.json
 htmlcov/
 .pytest_cache/
+reports/
+
+# Mutation testing (mutmut)
+.mutmut-cache
+*.bak
 
 # IDE
 .vscode/
@@ -44,3 +56,7 @@ htmlcov/
 # Documents (local data - don't commit user data)
 documents/*
 !documents/.gitkeep
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

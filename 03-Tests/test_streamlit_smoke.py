@@ -1,66 +1,32 @@
 """
-Smoke test for Streamlit entry points.
-Tests that the app modules can be imported and basic functions exist.
+Smoke test for the Streamlit entry point (02-Src/app_nexus.py).
+
+Parses the module without executing its top-level Streamlit code, and verifies
+the nexus-core symbols it depends on are importable. The legacy apps this file
+used to test (app.py / app_optimized.py) were archived to 99-Archive/.
 """
-import sys
+import ast
 import pathlib
-import pytest
 
-# Add 02-Src to path
-src_path = pathlib.Path(__file__).parent.parent / "02-Src"
-sys.path.insert(0, str(src_path))
+APP_NEXUS = pathlib.Path(__file__).parent.parent / "02-Src" / "app_nexus.py"
 
 
-def test_app_imports():
-    """Test that app.py can be imported without executing Streamlit code."""
-    try:
-        # Import as module to check syntax
-        import app
-        assert app is not None
-        assert hasattr(app, 'OLLAMA_MODEL')
-        assert hasattr(app, 'DOCUMENTS_DIR')
-    except ImportError as e:
-        # If streamlit or langchain not installed, that's OK for unit tests
-        if 'streamlit' in str(e) or 'langchain' in str(e):
-            pytest.skip(f"Skipping due to missing dependency: {e}")
-        else:
-            raise
+def test_app_nexus_parses():
+    """app_nexus.py is valid Python (no execution of Streamlit calls)."""
+    assert APP_NEXUS.exists()
+    ast.parse(APP_NEXUS.read_text())
 
 
-def test_app_optimized_imports():
-    """Test that app_optimized.py can be imported."""
-    try:
-        import app_optimized
-        assert app_optimized is not None
-        assert hasattr(app_optimized, 'PerformanceMonitor')
-        assert hasattr(app_optimized, 'MultiLayerCache')
-        assert hasattr(app_optimized, 'OptimizedDocumentProcessor')
-    except ImportError as e:
-        if 'streamlit' in str(e) or 'langchain' in str(e):
-            pytest.skip(f"Skipping due to missing dependency: {e}")
-        else:
-            raise
+def test_app_nexus_core_dependencies_import():
+    """The nexus-core symbols the shim imports resolve."""
+    from nexus.core.config import Config, NexusMode
+    from nexus.core.models import IndexRequest, QueryRequest
+    from nexus.core.rag_pipeline import RAGPipeline
+    from nexus.core.router import ProviderRouter
 
-
-def test_app_config_values():
-    """Test that app configuration values are sensible."""
-    try:
-        import app
-        assert isinstance(app.OLLAMA_MODEL, str)
-        assert len(app.OLLAMA_MODEL) > 0
-        assert isinstance(app.DOCUMENTS_DIR, str)
-        assert isinstance(app.CHROMA_DB_PATH, str)
-    except ImportError:
-        pytest.skip("Streamlit not installed")
-
-
-def test_optimized_config_values():
-    """Test that optimized app configuration is sensible."""
-    try:
-        import app_optimized
-        assert app_optimized.CHUNK_SIZE > 0
-        assert app_optimized.CHUNK_OVERLAP >= 0
-        assert app_optimized.CHUNK_OVERLAP < app_optimized.CHUNK_SIZE
-        assert app_optimized.MAX_WORKERS > 0
-    except ImportError:
-        pytest.skip("Dependencies not installed")
+    assert RAGPipeline is not None
+    assert ProviderRouter is not None
+    assert Config is not None
+    assert NexusMode is not None
+    assert QueryRequest is not None
+    assert IndexRequest is not None

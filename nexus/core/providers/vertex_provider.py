@@ -1,10 +1,12 @@
 """
 Google Vertex AI provider implementation using official SDK.
 """
-from typing import List, Dict, Optional
 import time
-from .base import LLMProvider, EmbeddingProvider
+from typing import Dict, List, Optional
+
 from ..config import Config
+from .base import EmbeddingProvider, LLMProvider
+from .profiles import ProviderCapabilities, ProviderCostProfile, ProviderPrivacyProfile
 
 
 class VertexLLMProvider(LLMProvider):
@@ -207,6 +209,26 @@ class VertexLLMProvider(LLMProvider):
         except Exception:
             return False
 
+    def get_privacy_profile(self) -> ProviderPrivacyProfile:
+        return ProviderPrivacyProfile(
+            provider_label="vertex",
+            is_local=False,
+            sends_data_offhost=True,
+            data_region=f"gcp:{self.region}",
+        )
+
+    def get_cost_profile(self) -> ProviderCostProfile:
+        # Approximate Gemini 1.5 Pro pricing (USD / 1M tokens).
+        return ProviderCostProfile(input_per_million_usd=3.5, output_per_million_usd=10.5)
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            supports_streaming=True,
+            supports_system_prompt=True,
+            supports_tools=True,
+            max_context_tokens=1000000,
+        )
+
 
 class VertexEmbeddingProvider(EmbeddingProvider):
     """
@@ -317,3 +339,19 @@ class VertexEmbeddingProvider(EmbeddingProvider):
             return True
         except Exception:
             return False
+
+    def get_privacy_profile(self) -> ProviderPrivacyProfile:
+        return ProviderPrivacyProfile(
+            provider_label="vertex",
+            is_local=False,
+            sends_data_offhost=True,
+            data_region=f"gcp:{self.region}",
+        )
+
+    def get_cost_profile(self) -> ProviderCostProfile:
+        return ProviderCostProfile(embed_per_million_usd=0.10)
+
+    def get_capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            supports_embeddings=True, supports_system_prompt=False, max_context_tokens=3072
+        )

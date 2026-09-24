@@ -1,3 +1,142 @@
+# Release v2.0.1
+
+**Release Date**: 2026-09-20
+
+## Changes since v2.0.0
+
+- chore: release v2.0.1 [skip ci] (87c42c2)
+- ci(deps): pin intent-audit-harness to the exact version the hash manifest was built with (#18) (956ac4c)
+
+---
+
+# Release v2.0.0
+
+**Release Date**: 2026-09-19
+
+## Changes since v1.1.10
+
+- chore: release v2.0.0 [skip ci] (b509728)
+- ci(deps): move GitHub actions off the node20 runtime before its removal (#16) (f2d9911)
+- chore(funding): add Ko-fi alongside the existing funding sources (5baeb17)
+- docs(readme): add the Ko-fi support badge (e0178a0)
+
+---
+
+# Release v1.1.10
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.9
+
+- chore: release v1.1.10 [skip ci] (d16a878)
+- test(moat): fix out-of-[0,1] score bug, add property/fuzz tests, PDF ingestion, seed BDD layer (#15) (8313b45)
+
+---
+
+# Release v1.1.9
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.8
+
+- chore: release v1.1.9 [skip ci] (dd447ad)
+- test(ci-hygiene): lazy ledger, blocking mocked API tests, CLI + integration fixes (PR3/4) (#14) (d51b352)
+
+---
+
+# Release v1.1.8
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.7
+
+- chore: release v1.1.8 [skip ci] (2af5dc3)
+- test(moat): cover every secret/PII pattern + provider adapters + ABC contract (PR2/4) (#13) (74241e1)
+
+---
+
+# Release v1.1.7
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.6
+
+- chore: release v1.1.7 [skip ci] (98a04d8)
+- test(gates): make the quality gates real — mutation, truthful CRAP, coverage ratchet (PR1/4) (#12) (3489da7)
+
+---
+
+# Release v1.1.6
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.5
+
+- chore: release v1.1.6 [skip ci] (1f3f4ba)
+- P7: reposition docs + implementation AAR (P0-P6) (#11) (da016cf)
+
+---
+
+# Release v1.1.5
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.4
+
+- chore: release v1.1.5 [skip ci] (e2a118a)
+- P6 (part 1): the nexus CLI (index/ask/policy/eval/audit) with agent-safe guardrails (#10) (6852cbb)
+
+---
+
+# Release v1.1.4
+
+**Release Date**: 2026-07-05
+
+## Changes since v1.1.3
+
+- chore: release v1.1.4 [skip ci] (d289b66)
+- P5: nexus/evals harness + P4b prompt-injection hardening (#9) (5542829)
+
+---
+
+# Release v1.1.3
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.2
+
+- chore: release v1.1.3 [skip ci] (af03dea)
+- P4a: trust moat — tamper-evident hash-chained ledger + API auth + CORS lockdown (#8) (04be93e)
+
+---
+
+# Release v1.1.2
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.1
+
+- chore: release v1.1.2 [skip ci] (2e85926)
+- P3: modular retrieval + real qmd hybrid backend + small-model defaults (#7) (ba119cc)
+
+---
+
+# Release v1.1.1
+
+**Release Date**: 2026-07-04
+
+## Changes since v1.1.0
+
+- chore: release v1.1.1 [skip ci] (8df9321)
+- Refactor NEXUS into a local-first BYOK document-intelligence platform (Phase 0 + dangerous-bug fixes) (#6) (c345075)
+- chore(beads): reconcile working state and stop tracking runtime locks (506b9bf)
+- bd init: initialize beads issue tracking (bb58789)
+- chore: update FUNDING.yml with GitHub Sponsors + Buy Me a Coffee (5fcd259)
+- Add proprietary license - All Rights Reserved (2c5fde3)
+- docs: Add v1.1.0 release report (1bfd8af)
+
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -26,7 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SQLite Run Ledger**: Complete audit trail for all index/query operations
   - Tracks document hashes, excerpt hashes, provider usage
   - Workspace-level statistics and analytics
-  - Compliance-ready (GDPR, HIPAA, SOC 2)
+  - Audit trail designed for privacy review (not a compliance certification)
 - **Workspace REST API**: Multi-tenant isolation
   - `GET /workspaces` - List all workspaces with stats
   - `POST /workspaces` - Create new workspace
@@ -99,11 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD pipeline
 
 ### Features
-- 100% local processing (no cloud dependencies)
-- Sub-second query responses
-- Supports 100K+ documents
-- GDPR/HIPAA compliant architecture
-- Air-gap capable operation
+- Local-first processing; can run fully offline in LOCAL mode
+- Optional BYOK cloud acceleration (hybrid/cloud modes)
+- Designed for privacy; supports local-only operation
 - Real-time performance metrics
 
 ---
