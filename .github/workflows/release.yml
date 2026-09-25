@@ -54,7 +54,11 @@ jobs:
       - name: Determine previous tag
         id: prev
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Highest semver tag, not the nearest reachable one: a release run whose
+          # branch push lost a race leaves its tag on a commit that is not on the
+          # branch, and `git describe` would then recompute the same version.
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          PREV_TAG=${PREV_TAG:-v0.0.0}
           echo "prev=$PREV_TAG" >> $GITHUB_OUTPUT
 
       - name: Check if release needed
@@ -170,9 +174,13 @@ jobs:
         if: steps.check.outputs.needed == 'true' && github.event.inputs.dry_run != 'true'
         run: |
           TAG="${{ steps.ver.outputs.tag }}"
+          # Another merge can land while this run works; replay the release
+          # commits on top of the current branch before tagging, and fail loudly
+          # if the branch push still loses, instead of leaving an orphan tag.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG" || echo "Tag push may have failed"
-          git push origin HEAD || echo "Branch push may have failed"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git push origin "$TAG"
 
       - name: Create GitHub Release
         if: steps.check.outputs.needed == 'true' && github.event.inputs.dry_run != 'true'
