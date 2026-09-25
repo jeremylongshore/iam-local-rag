@@ -1,3 +1,15 @@
+# Release v2.0.3
+
+**Release Date**: 2026-09-25
+
+## Changes since v2.0.2
+
+- chore: release v2.0.3 [skip ci] (57ba534)
+- fix(release): stop two queued release runs from computing the same tag (#20) (44ac8ad)
+- Settle the dormant NEXUS backlog under Backlog Zero and open the revival epic (#4) (0ee337b)
+
+---
+
 # Release v2.0.1
 
 **Release Date**: 2026-09-20
