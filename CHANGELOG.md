@@ -1,3 +1,14 @@
+# Release v2.0.4
+
+**Release Date**: 2026-09-25
+
+## Changes since v2.0.3
+
+- chore: release v2.0.4 [skip ci] (cc8929c)
+- ci(deps): pin the installers and actions CI resolves at run time (#21) (cd81be4)
+
+---
+
 # Release v2.0.3
 
 **Release Date**: 2026-09-25
