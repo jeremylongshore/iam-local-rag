@@ -128,7 +128,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[dev,ui]'
       - name: Install Ollama
-        run: curl -fsSL https://ollama.ai/install.sh | sh
+        # Exact release tarball + published checksum instead of `curl install.sh | sh`,
+        # which installs whatever Ollama shipped that morning.
+        env:
+          OLLAMA_VERSION: v0.34.4
+          OLLAMA_SHA256: c238986e61d40c0cc5f4a9b9e40b9eea104350b77efa34741fc134e105cb9533
+        run: |
+          curl -fsSL -o ollama-linux-amd64.tar.zst \
+            "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
+          echo "${OLLAMA_SHA256}  ollama-linux-amd64.tar.zst" | sha256sum -c -
+          sudo tar --zstd -C /usr/local -xf ollama-linux-amd64.tar.zst
+          rm -f ollama-linux-amd64.tar.zst
+          ollama --version
       - name: Start Ollama
         run: |
           nohup ollama serve > /tmp/ollama.log 2>&1 &
