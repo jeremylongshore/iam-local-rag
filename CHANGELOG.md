@@ -1,3 +1,14 @@
+# Release v2.0.5
+
+**Release Date**: 2026-10-14
+
+## Changes since v2.0.4
+
+- chore: release v2.0.5 [skip ci] (1ce9a06)
+- docs: display official Intent Solutions Select partner badge (#23) (b08acfe)
+
+---
+
 # Release v2.0.4
 
 **Release Date**: 2026-09-25
